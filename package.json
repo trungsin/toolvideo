@@ -1,0 +1,23 @@
+{
+  "name": "toolvideo",
+  "version": "1.0.0",
+  "description": "Download videos from YouTube and Facebook",
+  "type": "module",
+  "main": "src/cli/index.js",
+  "bin": {
+    "toolvideo": "./src/cli/index.js"
+  },
+  "scripts": {
+    "start": "node src/web/server.js",
+    "cli": "node src/cli/index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "commander": "^12.1.0",
+    "better-sqlite3": "^11.5.0",
+    "fb-downloader-scrapper": "^3.0.1",
+    "cheerio": "^1.0.0",
+    "axios": "^1.7.7",
+    "nanoid": "^5.0.7"
+  }
+}

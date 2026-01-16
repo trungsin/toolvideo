@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Downloader</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Video Downloader</h1>
+    <p class="subtitle">YouTube & Facebook</p>
+
+    <div class="input-group">
+      <input type="text" id="url-input" placeholder="Paste video URL here..." autofocus>
+      <button id="download-btn">Download</button>
+    </div>
+
+    <div id="status" class="status hidden">
+      <div class="platform" id="platform"></div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+      <div class="progress-text" id="progress-text">0%</div>
+    </div>
+
+    <div id="result" class="result hidden">
+      <div class="result-title" id="result-title"></div>
+      <a id="download-link" class="download-link" download>Download File</a>
+    </div>
+
+    <div id="error" class="error hidden"></div>
+
+    <div class="history">
+      <h3>Recent Downloads</h3>
+      <ul id="history-list"></ul>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

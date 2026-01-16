@@ -1,0 +1,258 @@
+/* Video Downloader - Minimal Dark Theme */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #1a1a2e;
+  color: #eee;
+  min-height: 100vh;
+  padding: 40px 20px;
+}
+
+.container {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 2rem;
+  margin-bottom: 0.25rem;
+  font-weight: 600;
+}
+
+.subtitle {
+  color: #888;
+  margin-bottom: 2rem;
+  font-size: 0.9rem;
+}
+
+/* Input Group */
+.input-group {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 1.5rem;
+}
+
+input {
+  flex: 1;
+  padding: 14px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #16213e;
+  color: #fff;
+  font-size: 1rem;
+}
+
+input::placeholder {
+  color: #666;
+}
+
+input:focus {
+  outline: 2px solid #e94560;
+  outline-offset: 0;
+}
+
+button {
+  padding: 14px 28px;
+  border: none;
+  border-radius: 8px;
+  background: #e94560;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+
+button:hover {
+  background: #ff6b6b;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+button:disabled {
+  background: #555;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Status Section */
+.status {
+  background: #16213e;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.platform {
+  font-size: 0.75rem;
+  font-weight: bold;
+  color: #e94560;
+  margin-bottom: 12px;
+  letter-spacing: 0.5px;
+}
+
+.progress-bar {
+  height: 8px;
+  background: #0f3460;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #e94560, #ff6b6b);
+  width: 0%;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 0.875rem;
+  color: #888;
+}
+
+/* Result Section */
+.result {
+  background: #16213e;
+  padding: 24px;
+  border-radius: 8px;
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.result-title {
+  margin-bottom: 16px;
+  word-break: break-word;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.download-link {
+  display: inline-block;
+  padding: 12px 24px;
+  background: #e94560;
+  color: #fff;
+  text-decoration: none;
+  border-radius: 6px;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.download-link:hover {
+  background: #ff6b6b;
+}
+
+/* Error Section */
+.error {
+  background: #c0392b;
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+/* History Section */
+.history {
+  margin-top: 2.5rem;
+}
+
+.history h3 {
+  font-size: 0.9rem;
+  color: #888;
+  margin-bottom: 1rem;
+  font-weight: 500;
+}
+
+.history ul {
+  list-style: none;
+}
+
+.history li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #16213e;
+  font-size: 0.875rem;
+}
+
+.history li.empty {
+  color: #555;
+  font-style: italic;
+}
+
+.platform-tag {
+  font-size: 0.625rem;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+
+.platform-tag.youtube {
+  background: #ff0000;
+  color: #fff;
+}
+
+.platform-tag.facebook {
+  background: #1877f2;
+  color: #fff;
+}
+
+.history .title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #ccc;
+}
+
+.history .date {
+  color: #555;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+/* Utility */
+.hidden {
+  display: none !important;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  body {
+    padding: 20px 16px;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+  }
+
+  .input-group {
+    flex-direction: column;
+  }
+
+  button {
+    width: 100%;
+  }
+
+  .history li {
+    flex-wrap: wrap;
+  }
+
+  .history .title {
+    order: 3;
+    width: 100%;
+    margin-top: 4px;
+  }
+}
