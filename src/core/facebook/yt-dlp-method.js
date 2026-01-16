@@ -84,7 +84,8 @@ async function runDownload(url, outputDir, progress) {
     const outputTemplate = join(outputDir, '%(title)s.%(ext)s');
 
     const args = [
-      '-f', 'bestvideo+bestaudio/best',
+      // Force H.264 (avc1) video + AAC (mp4a) audio for universal compatibility
+      '-f', 'bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[vcodec^=avc1]/best',
       '--merge-output-format', 'mp4',
       '-o', outputTemplate,
       '--no-playlist',
