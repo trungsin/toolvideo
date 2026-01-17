@@ -15,13 +15,25 @@ const resultTitle = document.getElementById('result-title');
 const downloadLink = document.getElementById('download-link');
 const errorDiv = document.getElementById('error');
 const historyList = document.getElementById('history-list');
+const karaokeToggle = document.getElementById('karaoke-toggle');
+const karaokeOptions = document.getElementById('karaoke-options');
+const lyricsSource = document.getElementById('lyrics-source');
+const langSelect = document.getElementById('lang-select');
 
 // State
 let currentDownloadId = null;
 let pollInterval = null;
+let isKaraokeMode = false;
 
 // Initialize
 loadHistory();
+
+// Karaoke toggle handler
+karaokeToggle.addEventListener('change', () => {
+  isKaraokeMode = karaokeToggle.checked;
+  karaokeOptions.classList.toggle('hidden', !isKaraokeMode);
+  downloadBtn.textContent = isKaraokeMode ? 'Create Karaoke' : 'Download';
+});
 
 // Event listeners
 downloadBtn.addEventListener('click', startDownload);
@@ -47,21 +59,46 @@ async function startDownload() {
   progressText.textContent = 'Starting...';
 
   try {
-    // Start download via API
-    const response = await fetch('/api/download', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url })
-    });
+    let response, data;
 
-    const data = await response.json();
+    if (isKaraokeMode) {
+      // Start karaoke conversion
+      response = await fetch('/api/karaoke', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url,
+          source: lyricsSource.value,
+          language: langSelect.value
+        })
+      });
 
-    if (!response.ok) {
-      throw new Error(data.error || 'Download failed');
+      data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Karaoke conversion failed');
+      }
+
+      currentDownloadId = data.karaokeId;
+      platformDiv.textContent = `${data.platform.toUpperCase()} • KARAOKE`;
+
+    } else {
+      // Normal download
+      response = await fetch('/api/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+
+      data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Download failed');
+      }
+
+      currentDownloadId = data.downloadId;
+      platformDiv.textContent = data.platform.toUpperCase();
     }
-
-    currentDownloadId = data.downloadId;
-    platformDiv.textContent = data.platform.toUpperCase();
 
     // Start polling for progress
     pollInterval = setInterval(checkProgress, 500);
@@ -82,13 +119,28 @@ async function checkProgress() {
     const response = await fetch(`/api/progress/${currentDownloadId}`);
     const data = await response.json();
 
-    if (data.status === 'downloading') {
+    const isKaraoke = data.isKaraoke;
+
+    if (data.status === 'downloading' || data.status === 'processing') {
       const percent = Math.round(data.progress || 0);
       progressFill.style.width = `${percent}%`;
 
       let text = `${percent}%`;
-      if (data.speed) text += ` - ${data.speed}`;
-      if (data.eta) text += ` - ETA: ${data.eta}`;
+      if (isKaraoke && data.stage) {
+        const stageNames = {
+          download: 'Downloading',
+          extract: 'Extracting audio',
+          separate: 'Separating vocals',
+          lyrics: 'Fetching lyrics',
+          transcribe: 'Transcribing',
+          sync: 'Syncing lyrics',
+          render: 'Rendering video'
+        };
+        text = `${stageNames[data.stage] || data.stage} - ${percent}%`;
+      } else {
+        if (data.speed) text += ` - ${data.speed}`;
+        if (data.eta) text += ` - ETA: ${data.eta}`;
+      }
       progressText.textContent = text;
 
     } else if (data.status === 'complete') {
@@ -98,13 +150,32 @@ async function checkProgress() {
       progressFill.style.width = '100%';
       progressText.textContent = 'Complete!';
 
-      // Show download result
-      resultTitle.textContent = data.result.title || 'Video';
-      downloadLink.href = `/api/file/${currentDownloadId}`;
-      resultDiv.classList.remove('hidden');
-      downloadBtn.disabled = false;
+      if (isKaraoke) {
+        // Show karaoke result with multiple download options
+        resultTitle.textContent = 'Karaoke Ready!';
+        resultDiv.innerHTML = `
+          <div class="result-title">Karaoke Ready!</div>
+          <div class="karaoke-downloads">
+            <a href="/api/karaoke/file/${currentDownloadId}/video" class="download-link" download>
+              Download Karaoke Video
+            </a>
+            <a href="/api/karaoke/file/${currentDownloadId}/lrc" class="download-link secondary" download>
+              Download Lyrics (.lrc)
+            </a>
+          </div>
+          <div class="result-info">
+            Segments: ${data.result.segments || 0} | Source: ${data.result.lyricsSource || 'unknown'}
+          </div>
+        `;
+        resultDiv.classList.remove('hidden');
+      } else {
+        // Normal download result
+        resultTitle.textContent = data.result.title || 'Video';
+        downloadLink.href = `/api/file/${currentDownloadId}`;
+        resultDiv.classList.remove('hidden');
+      }
 
-      // Refresh history
+      downloadBtn.disabled = false;
       loadHistory();
 
     } else if (data.status === 'error') {

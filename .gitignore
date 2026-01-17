@@ -75,6 +75,13 @@ ck.md
 /data/
 /downloads/
 
+# Karaoke temp files
+/temp/
+!temp/.gitkeep
+
+# Python venv for scripts
+/scripts/.venv/
+
 # Gemini CLI settings (symlink to .claude/.mcp.json)
 .gemini/settings.json
 .claude/settings.bak.json

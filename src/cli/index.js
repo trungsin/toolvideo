@@ -215,5 +215,101 @@ program
     });
   });
 
+// Karaoke command
+program
+  .command('karaoke <input>')
+  .description('Convert video to karaoke (vocal removal + synced lyrics)')
+  .option('-a, --auto', 'Auto-transcribe lyrics from audio (like VEED.io)')
+  .option('-l, --lyrics <text>', 'Provide lyrics manually')
+  .option('--no-lyrics', 'Instrumental only (skip lyrics sync)')
+  .option('-o, --output <file>', 'Output file path')
+  .option('--lang <code>', 'Audio language (e.g., en, vi, ko, ja, zh) - specify for better accuracy')
+  .option('--model <name>', 'Whisper model: base, medium, large (default: medium for --auto)')
+  .action(async (input, options) => {
+    const { convertToKaraoke, checkDependencies } = await import('../core/karaoke/karaoke-handler.js');
+
+    // Check dependencies first
+    const deps = await checkDependencies();
+    if (!deps.ready) {
+      console.error(colors.red(`Error: ${deps.message}`));
+      process.exit(1);
+    }
+
+    let videoPath = input;
+
+    // Download if URL
+    if (isValidUrl(input)) {
+      const { platform } = detectPlatform(input);
+      if (platform === 'unknown') {
+        console.error(colors.red('Error: Unsupported platform'));
+        process.exit(1);
+      }
+
+      console.log(colors.cyan(`Downloading from ${platform.toUpperCase()}...`));
+
+      try {
+        const result = await download(input, {
+          outputDir: './downloads',
+          onProgress: (data) => {
+            if (data.percent !== undefined) {
+              process.stdout.write(`\r${progressBar(data.percent)}`);
+            }
+          }
+        });
+        videoPath = result.filepath;
+        console.log('\n');
+      } catch (error) {
+        console.error(colors.red(`\nDownload failed: ${error.message}`));
+        process.exit(1);
+      }
+    }
+
+    console.log(colors.cyan('Converting to karaoke...'));
+    console.log(colors.dim(`Input: ${videoPath}`));
+    console.log('');
+
+    try {
+      // Commander uses negative option: --no-lyrics sets options.lyrics to false
+      const noLyrics = options.lyrics === false;
+
+      const result = await convertToKaraoke(videoPath, {
+        lyrics: typeof options.lyrics === 'string' ? options.lyrics : undefined,
+        autoLyrics: options.auto,
+        noLyrics,
+        output: options.output,
+        language: options.lang,
+        model: options.model,
+        onProgress: (data) => {
+          let line = `\r${colors.dim(data.stage.padEnd(10))} `;
+          if (data.status) line += data.status;
+          if (data.progress !== undefined) line += ` ${data.progress}%`;
+          process.stdout.write(line.padEnd(70));
+        }
+      });
+
+      console.log('\n');
+      console.log(colors.green('\u2713 Karaoke created!'));
+      console.log(colors.dim(`Type: ${result.type}`));
+      if (result.outputFolder) {
+        console.log(colors.dim(`Folder: ${result.outputFolder}`));
+      }
+      console.log(colors.dim(`Video: ${result.output}`));
+      if (result.lyricsLrc) {
+        console.log(colors.dim(`Lyrics: ${result.lyricsLrc}`));
+      }
+      if (result.segments) {
+        console.log(colors.dim(`Segments: ${result.segments}`));
+      }
+      if (result.lyricsSource) {
+        console.log(colors.dim(`Source: ${result.lyricsSource}`));
+      }
+
+    } catch (error) {
+      console.error('\n');
+      console.error(colors.red(`Error: ${error.message}`));
+      process.exit(1);
+    }
+  });
+
 // Parse and run
 program.parse();

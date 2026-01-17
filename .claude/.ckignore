@@ -13,6 +13,7 @@ build
 __pycache__
 .venv
 venv
+!scripts/.venv
 
 # Go/PHP/Rust/Java
 vendor

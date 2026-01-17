@@ -16,6 +16,29 @@
       <button id="download-btn">Download</button>
     </div>
 
+    <div class="options-group">
+      <label class="toggle">
+        <input type="checkbox" id="karaoke-toggle">
+        <span class="toggle-slider"></span>
+        <span class="toggle-label">Karaoke Mode</span>
+      </label>
+      <div id="karaoke-options" class="karaoke-options hidden">
+        <select id="lyrics-source">
+          <option value="auto">Auto (lrclib → Whisper)</option>
+          <option value="lrclib">lrclib only</option>
+          <option value="whisper">Whisper transcribe</option>
+        </select>
+        <select id="lang-select">
+          <option value="auto">Auto detect</option>
+          <option value="vi">Vietnamese</option>
+          <option value="en">English</option>
+          <option value="ko">Korean</option>
+          <option value="ja">Japanese</option>
+          <option value="zh">Chinese</option>
+        </select>
+      </div>
+    </div>
+
     <div id="status" class="status hidden">
       <div class="platform" id="platform"></div>
       <div class="progress-bar">
