@@ -100,7 +100,7 @@ Tải video, trả link tải. Block đến khi xong (timeout 120s).
 }
 ```
 
-**Lưu ý**: `download_url` yêu cầu API key — agent có thể đưa link cho user, nhưng user phải tải qua tool/proxy (vì browser thông thường không gửi header). Nếu cần expose cho user click trực tiếp, dùng Web UI thay thế.
+**Lưu ý**: `download_url` là link public — end user click trực tiếp trong browser sẽ tải file ngay, không cần API key (ID nanoid unguessable đóng vai trò token).
 
 ### `start_karaoke`
 
@@ -179,7 +179,7 @@ Agent flow tự động chọn tool phù hợp.
 - File limit: 500MB (server-side cap)
 - Disk: ~10GB free trên server, dọn định kỳ
 - Rate limit: chưa enforce, fair-use only
-- Download URLs cần API key → không share trực tiếp với end user (chỉ MCP process biết key)
+- Download URLs (`/api/file/:id`, `/api/karaoke/file/:id/:type`) là public — bảo mật dựa vào ID nanoid unguessable. Không share công khai (e.g. paste lên forum) để tránh leak.
 - Karaoke yêu cầu Whisper model trên server (đã có `base` + `medium`)
 
 ## Support

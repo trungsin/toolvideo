@@ -21,12 +21,18 @@ app.use(express.json());
 /**
  * API key auth middleware.
  * Web UI (browser with matching Origin/Referer) bypasses auth.
- * External callers (MCP, scripts) must send X-API-Key matching process.env.API_KEY.
+ * File download routes (/api/file/:id, /api/karaoke/file/:id/:type) are always public:
+ *   IDs are random and unguessable, so the URL itself is the secret. This lets
+ *   end users open download links directly in a browser (no key needed).
+ * Other /api/* routes require X-API-Key matching process.env.API_KEY for external callers.
  * If API_KEY env is not set, all /api/* routes are open (backward compat).
  */
 const WEB_UI_HOSTS = ['saveclip.datxanhmientrung.ai', 'localhost', '127.0.0.1'];
+// Paths are relative to the /api mount point (req.path strips the prefix)
+const PUBLIC_PATH_PREFIXES = ['/file/', '/karaoke/file/'];
 function apiKeyAuth(req, res, next) {
   if (!process.env.API_KEY) return next(); // not configured → open
+  if (PUBLIC_PATH_PREFIXES.some(p => req.path.startsWith(p))) return next();
   const origin = req.get('origin') || req.get('referer') || '';
   const isWebUI = WEB_UI_HOSTS.some(h => origin.includes(h));
   if (isWebUI) return next();
