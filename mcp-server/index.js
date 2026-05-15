@@ -84,8 +84,10 @@ async function handleGetVideoInfo({ url }) {
 async function handleDownloadVideo({ url, audio_only, watermark }) {
   const start = await apiPost('/api/download', { url, audioOnly: audio_only, watermark });
   const result = await pollUntilComplete(start.downloadId, { timeoutMs: 120000 });
+  // Use persistent history DB id (result.id) — survives pm2 restarts.
+  // downloadId is in-memory only and would 404 after restart.
   return {
-    download_url: fileUrl(start.downloadId),
+    download_url: fileUrl(result.id),
     title: result.title,
     duration: result.duration,
     quality: result.quality,

@@ -7,7 +7,7 @@ import express from 'express';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { download, detectPlatform, isValidUrl } from '../core/downloader.js';
-import { getDownloads } from '../db/history.js';
+import { getDownloads, getDownloadById } from '../db/history.js';
 import { createReadStream, statSync, existsSync } from 'fs';
 import { convertToKaraoke, checkDependencies } from '../core/karaoke/karaoke-handler.js';
 
@@ -165,16 +165,30 @@ app.get('/api/history', (req, res) => {
   res.json(downloads);
 });
 
-// API: Serve downloaded file
+// API: Serve downloaded file. Looks up in in-memory map first (current session),
+// then falls back to persistent history DB so links survive pm2 restarts.
 app.get('/api/file/:id', (req, res) => {
   const { id } = req.params;
-  const downloadData = activeDownloads.get(id);
 
-  if (!downloadData || downloadData.status !== 'complete') {
-    return res.status(404).json({ error: 'File not ready' });
+  let filepath = null;
+
+  // Path 1: in-memory active downloads (any URL scheme — downloadId or history id)
+  const downloadData = activeDownloads.get(id);
+  if (downloadData && downloadData.status === 'complete' && downloadData.result?.filepath) {
+    filepath = downloadData.result.filepath;
   }
 
-  const filepath = downloadData.result.filepath;
+  // Path 2: persistent lookup by history DB id
+  if (!filepath) {
+    const record = getDownloadById(id);
+    if (record && record.filepath) {
+      filepath = record.filepath;
+    }
+  }
+
+  if (!filepath) {
+    return res.status(404).json({ error: 'File not ready' });
+  }
 
   if (!existsSync(filepath)) {
     return res.status(404).json({ error: 'File not found' });
