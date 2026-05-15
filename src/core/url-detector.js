@@ -1,6 +1,6 @@
 /**
  * URL detector for identifying video platforms
- * Supports YouTube and Facebook video URLs
+ * Supports YouTube, Facebook, and TikTok video URLs
  */
 
 // YouTube URL patterns - captures video ID in group 1
@@ -20,6 +20,23 @@ const FACEBOOK_PATTERNS = [
   /facebook\.com\/.*\/posts\//,
   /facebook\.com\/share\/v\//,
   /facebook\.com\/video\.php/,
+];
+
+// TikTok video URL patterns - captures video ID in group 1
+const TIKTOK_VIDEO_PATTERNS = [
+  /tiktok\.com\/@[^/]+\/video\/(\d+)/,
+  /m\.tiktok\.com\/v\/(\d+)/,
+  /tiktok\.com\/embed\/(\d+)/,
+];
+
+// TikTok photo carousel patterns - captures post ID in group 1
+const TIKTOK_PHOTO_PATTERNS = [
+  /tiktok\.com\/@[^/]+\/photo\/(\d+)/,
+];
+
+// TikTok short URL patterns - need redirect resolve before parsing
+const TIKTOK_SHORT_PATTERNS = [
+  /(?:vm|vt)\.tiktok\.com\/[\w]+/i,
 ];
 
 /**
@@ -58,11 +75,132 @@ export function detectPlatform(url) {
     }
   }
 
+  // Check TikTok video patterns
+  for (const pattern of TIKTOK_VIDEO_PATTERNS) {
+    if (pattern.test(url)) {
+      const match = url.match(pattern);
+      return {
+        platform: 'tiktok',
+        videoId: match?.[1] || null,
+        contentType: 'video',
+        originalUrl: url
+      };
+    }
+  }
+
+  // Check TikTok photo carousel patterns
+  for (const pattern of TIKTOK_PHOTO_PATTERNS) {
+    if (pattern.test(url)) {
+      const match = url.match(pattern);
+      return {
+        platform: 'tiktok',
+        videoId: match?.[1] || null,
+        contentType: 'photo',
+        originalUrl: url
+      };
+    }
+  }
+
+  // Check TikTok short URLs (need resolveShortUrl before content detection)
+  for (const pattern of TIKTOK_SHORT_PATTERNS) {
+    if (pattern.test(url)) {
+      return {
+        platform: 'tiktok',
+        videoId: null,
+        contentType: 'unknown',
+        isShortUrl: true,
+        originalUrl: url
+      };
+    }
+  }
+
+  // Any tiktok.com host that didn't match a specific pattern → treat as TikTok
+  // with unknown content type. yt-dlp can still handle many edge URL shapes.
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.endsWith('tiktok.com')) {
+      return {
+        platform: 'tiktok',
+        videoId: null,
+        contentType: 'unknown',
+        originalUrl: url
+      };
+    }
+  } catch {
+    // Fall through to unknown
+  }
+
   return {
     platform: 'unknown',
     videoId: null,
     originalUrl: url
   };
+}
+
+/**
+ * Resolve TikTok short URL (vm.tiktok.com / vt.tiktok.com) to full URL
+ * Follows redirects manually (max 3 hops) with whitelisted domain
+ * @param {string} url - Short URL
+ * @returns {Promise<string>} Resolved full URL
+ */
+export async function resolveShortUrl(url) {
+  if (!isValidUrl(url)) {
+    throw new Error('Invalid URL');
+  }
+
+  let current = url;
+  let resolved = false;
+  for (let i = 0; i < 3; i++) {
+    const parsed = new URL(current);
+    // Defense-in-depth: only allow http/https schemes
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error(`Disallowed protocol in redirect: ${parsed.protocol}`);
+    }
+    // Whitelist tiktok.com domains only for security
+    if (!parsed.hostname.endsWith('tiktok.com')) {
+      throw new Error(`Unexpected redirect host: ${parsed.hostname}`);
+    }
+
+    const next = await fetchRedirect(current);
+    if (next) {
+      current = new URL(next, current).toString();
+      resolved = true;
+      continue;
+    }
+    // No redirect — current is final
+    return current;
+  }
+
+  if (!resolved) {
+    throw new Error('Failed to resolve short URL: no redirect received');
+  }
+  return current;
+}
+
+/**
+ * Single redirect fetch — tries HEAD then GET, returns Location header or null when final
+ */
+async function fetchRedirect(url) {
+  const tryFetch = async (method) => {
+    return fetch(url, {
+      method,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(5000),
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+  };
+
+  let response;
+  try {
+    response = await tryFetch('HEAD');
+  } catch {
+    response = await tryFetch('GET');
+  }
+
+  if (response.status >= 300 && response.status < 400) {
+    return response.headers.get('location');
+  }
+  return null;
 }
 
 /**

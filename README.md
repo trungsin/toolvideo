@@ -1,11 +1,12 @@
 # toolvideo
 
-Personal video download tool for YouTube and Facebook with CLI and Web interface. Includes karaoke conversion with vocal removal and synced lyrics.
+Personal video download tool for YouTube, Facebook, and TikTok with CLI and Web interface. Includes karaoke conversion with vocal removal and synced lyrics.
 
 ## Features
 
 - **YouTube** - Downloads via yt-dlp with best quality auto-selection
 - **Facebook** - Multi-fallback chain (yt-dlp → npm lib → custom scraper)
+- **TikTok** - Multi-fallback (yt-dlp → tikwm.com API). Supports no-watermark video, watermark video, audio-only MP3, photo carousels rendered as MP4 slideshow.
 - **Karaoke** - Vocal removal + synced lyrics overlay
 - **CLI** - Simple command-line interface
 - **Web UI** - Minimal dark-themed web app
@@ -34,8 +35,20 @@ npm install
 ### CLI
 
 ```bash
-# Download video
+# Download video (YouTube, Facebook, TikTok)
 ./src/cli/index.js <url>
+
+# TikTok: download with watermark
+./src/cli/index.js --watermark <tiktok-url>
+
+# TikTok: extract audio as MP3
+./src/cli/index.js --audio-only <tiktok-url>
+
+# TikTok short URL (vm.tiktok.com / vt.tiktok.com) is auto-resolved
+./src/cli/index.js https://vm.tiktok.com/ZSXXXXXX/
+
+# TikTok photo carousel — auto-rendered as MP4 slideshow
+./src/cli/index.js https://www.tiktok.com/@user/photo/<id>
 
 # Show download history
 ./src/cli/index.js history
@@ -66,6 +79,9 @@ npm install
 
 # From local file
 ./src/cli/index.js karaoke ./video.mp4
+
+# TikTok — auto-transcribe enabled by default (lrclib rarely has snippet/remix lyrics)
+./src/cli/index.js karaoke https://www.tiktok.com/@user/video/<id>
 ```
 
 **Output:** Creates folder `downloads/YYMMDD-HHMM-song-name/` with:
@@ -95,9 +111,15 @@ src/
 │   └── public/               # Frontend assets
 ├── core/
 │   ├── downloader.js         # Main orchestrator
-│   ├── url-detector.js       # Platform detection
+│   ├── url-detector.js       # Platform detection + short-URL resolver
 │   ├── youtube-handler.js    # yt-dlp wrapper
 │   ├── facebook-handler.js   # Multi-fallback handler
+│   ├── facebook/             # Facebook methods (yt-dlp, npm-lib, scraper)
+│   ├── tiktok-handler.js     # TikTok multi-fallback handler
+│   ├── tiktok/
+│   │   ├── yt-dlp-method.js     # Primary TikTok download
+│   │   ├── tikwm-method.js      # Fallback via tikwm.com
+│   │   └── carousel-renderer.js # FFmpeg slideshow for photo posts
 │   └── karaoke/
 │       ├── karaoke-handler.js   # Karaoke orchestrator
 │       ├── audio-extractor.js   # FFmpeg audio extract

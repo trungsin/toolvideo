@@ -2,7 +2,7 @@
 
 /**
  * CLI entry point for toolvideo
- * Download videos from YouTube and Facebook
+ * Download videos from YouTube, Facebook, and TikTok
  */
 
 import { Command } from 'commander';
@@ -56,7 +56,7 @@ function formatDate(yyyymmdd) {
 // Program setup
 program
   .name('toolvideo')
-  .description('Download videos from YouTube and Facebook')
+  .description('Download videos from YouTube, Facebook, and TikTok')
   .version('1.0.0');
 
 // Default download command
@@ -64,6 +64,8 @@ program
   .argument('[url]', 'Video URL to download')
   .option('-o, --output <dir>', 'Output directory', './downloads')
   .option('-f, --force', 'Force re-download even if exists in history')
+  .option('--watermark', 'TikTok only: include watermark in downloaded video')
+  .option('--audio-only', 'TikTok only: download audio as MP3')
   .action(async (url, options) => {
     if (!url) {
       program.help();
@@ -79,7 +81,7 @@ program
     // Detect platform
     const { platform } = detectPlatform(url);
     if (platform === 'unknown') {
-      console.error(colors.red('Error: Unsupported platform. Only YouTube and Facebook are supported.'));
+      console.error(colors.red('Error: Unsupported platform. Supported: YouTube, Facebook, TikTok.'));
       process.exit(1);
     }
 
@@ -91,6 +93,8 @@ program
       const result = await download(url, {
         outputDir: options.output,
         force: options.force,
+        watermark: options.watermark,
+        audioOnly: options.audioOnly,
         onProgress: (data) => {
           if (data.percent !== undefined) {
             let line = `\r${progressBar(data.percent)}`;
@@ -236,6 +240,7 @@ program
     }
 
     let videoPath = input;
+    let sourcePlatform = null;
 
     // Download if URL
     if (isValidUrl(input)) {
@@ -244,6 +249,7 @@ program
         console.error(colors.red('Error: Unsupported platform'));
         process.exit(1);
       }
+      sourcePlatform = platform;
 
       console.log(colors.cyan(`Downloading from ${platform.toUpperCase()}...`));
 
@@ -264,17 +270,24 @@ program
       }
     }
 
+    // TikTok songs are usually snippets/remixes — lrclib rarely has them.
+    // Default to Whisper auto-transcribe unless user provided manual lyrics or opted out.
+    const noLyrics = options.lyrics === false;
+    const hasManualLyrics = typeof options.lyrics === 'string';
+    let autoLyrics = options.auto;
+    if (sourcePlatform === 'tiktok' && !autoLyrics && !hasManualLyrics && !noLyrics) {
+      autoLyrics = true;
+      console.log(colors.dim('TikTok detected: enabling auto-transcribe (Whisper)'));
+    }
+
     console.log(colors.cyan('Converting to karaoke...'));
     console.log(colors.dim(`Input: ${videoPath}`));
     console.log('');
 
     try {
-      // Commander uses negative option: --no-lyrics sets options.lyrics to false
-      const noLyrics = options.lyrics === false;
-
       const result = await convertToKaraoke(videoPath, {
-        lyrics: typeof options.lyrics === 'string' ? options.lyrics : undefined,
-        autoLyrics: options.auto,
+        lyrics: hasManualLyrics ? options.lyrics : undefined,
+        autoLyrics,
         noLyrics,
         output: options.output,
         language: options.lang,

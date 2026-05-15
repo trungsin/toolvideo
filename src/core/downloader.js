@@ -3,7 +3,7 @@
  * Routes downloads to appropriate platform handlers
  */
 
-import { detectPlatform, isValidUrl } from './url-detector.js';
+import { detectPlatform, isValidUrl, resolveShortUrl } from './url-detector.js';
 import { addDownload, searchByUrl } from '../db/history.js';
 import { ProgressTracker } from '../utils/progress.js';
 
@@ -23,9 +23,18 @@ export async function download(url, options = {}) {
   }
 
   // Detect platform
-  const { platform } = detectPlatform(url);
+  let detection = detectPlatform(url);
+
+  // Resolve TikTok short URLs to get content type
+  if (detection.platform === 'tiktok' && detection.isShortUrl) {
+    const resolved = await resolveShortUrl(url);
+    detection = detectPlatform(resolved);
+    url = resolved;
+  }
+
+  const { platform } = detection;
   if (platform === 'unknown') {
-    throw new Error('Unsupported platform. Only YouTube and Facebook are supported.');
+    throw new Error('Unsupported platform. Supported: YouTube, Facebook, TikTok.');
   }
 
   // Check if already downloaded (optional skip)
@@ -52,6 +61,15 @@ export async function download(url, options = {}) {
   } else if (platform === 'facebook') {
     const { downloadFacebook } = await import('./facebook-handler.js');
     result = await downloadFacebook(url, { progress, outputDir: options.outputDir });
+  } else if (platform === 'tiktok') {
+    const { downloadTikTok } = await import('./tiktok-handler.js');
+    result = await downloadTikTok(url, {
+      progress,
+      outputDir: options.outputDir,
+      contentType: detection.contentType,
+      watermark: options.watermark,
+      audioOnly: options.audioOnly,
+    });
   }
 
   // Save to history
@@ -91,6 +109,9 @@ export async function getInfo(url) {
   } else if (platform === 'facebook') {
     // Facebook info requires download attempt, return basic info
     return { platform, url };
+  } else if (platform === 'tiktok') {
+    const { getTikTokInfo } = await import('./tiktok-handler.js');
+    return { platform, ...(await getTikTokInfo(url)) };
   }
 }
 

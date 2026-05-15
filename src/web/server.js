@@ -42,7 +42,7 @@ app.post('/api/check', (req, res) => {
 
   const { platform } = detectPlatform(url);
   if (platform === 'unknown') {
-    return res.status(400).json({ error: 'Unsupported platform. Only YouTube and Facebook are supported.' });
+    return res.status(400).json({ error: 'Unsupported platform. Supported: YouTube, Facebook, TikTok.' });
   }
 
   res.json({ platform, valid: true });
@@ -198,9 +198,12 @@ app.post('/api/karaoke', async (req, res) => {
         current.status = 'processing';
       }
 
+      // TikTok: default to Whisper auto-transcribe — lrclib rarely has snippet/remix lyrics.
+      const useAuto = source === 'whisper' || (platform === 'tiktok' && source !== 'lrclib');
+
       // Step 2: Convert to karaoke
       const karaokeResult = await convertToKaraoke(downloadResult.filepath, {
-        autoLyrics: source === 'whisper',
+        autoLyrics: useAuto,
         language: language !== 'auto' ? language : undefined,
         onProgress: (data) => {
           if (current) {
