@@ -3,6 +3,7 @@
  * Routes downloads to appropriate platform handlers
  */
 
+import { existsSync } from 'fs';
 import { detectPlatform, isValidUrl, resolveShortUrl } from './url-detector.js';
 import { addDownload, searchByUrl } from '../db/history.js';
 import { ProgressTracker } from '../utils/progress.js';
@@ -37,10 +38,10 @@ export async function download(url, options = {}) {
     throw new Error('Unsupported platform. Supported: YouTube, Facebook, TikTok.');
   }
 
-  // Check if already downloaded (optional skip)
+  // Check if already downloaded (skip only if file still exists on disk)
   if (!options.force) {
     const existing = searchByUrl(url);
-    if (existing && existing.filepath) {
+    if (existing && existing.filepath && existsSync(existing.filepath)) {
       console.log(`Already downloaded: ${existing.filepath}`);
       return existing;
     }

@@ -26,6 +26,7 @@ POSSIBLE_PATHS=(
   "$HOME/Library/Application Support/whisper.cpp/ggml-${MODEL}.bin"
   "/usr/local/share/whisper.cpp/ggml-${MODEL}.bin"
   "/opt/homebrew/share/whisper.cpp/ggml-${MODEL}.bin"
+  "/opt/whisper.cpp/models/ggml-${MODEL}.bin"
 )
 
 for path in "${POSSIBLE_PATHS[@]}"; do
