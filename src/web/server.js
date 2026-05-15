@@ -17,6 +17,27 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(express.json());
+
+/**
+ * API key auth middleware.
+ * Web UI (browser with matching Origin/Referer) bypasses auth.
+ * External callers (MCP, scripts) must send X-API-Key matching process.env.API_KEY.
+ * If API_KEY env is not set, all /api/* routes are open (backward compat).
+ */
+const WEB_UI_HOSTS = ['saveclip.datxanhmientrung.ai', 'localhost', '127.0.0.1'];
+function apiKeyAuth(req, res, next) {
+  if (!process.env.API_KEY) return next(); // not configured → open
+  const origin = req.get('origin') || req.get('referer') || '';
+  const isWebUI = WEB_UI_HOSTS.some(h => origin.includes(h));
+  if (isWebUI) return next();
+  const key = req.get('x-api-key');
+  if (key !== process.env.API_KEY) {
+    return res.status(401).json({ error: 'Invalid or missing API key' });
+  }
+  next();
+}
+app.use('/api', apiKeyAuth);
+
 app.use(express.static(join(__dirname, 'public')));
 
 // Store active downloads for progress tracking
@@ -110,6 +131,25 @@ app.get('/api/progress/:id', (req, res) => {
   }
 
   res.json(downloadData);
+});
+
+// API: Get video metadata without downloading (for MCP get_video_info)
+app.get('/api/info', async (req, res) => {
+  const url = req.query.url;
+  if (!url || !isValidUrl(url)) {
+    return res.status(400).json({ error: 'Invalid or missing url query param' });
+  }
+  const { platform } = detectPlatform(url);
+  if (platform === 'unknown') {
+    return res.status(400).json({ error: 'Unsupported platform' });
+  }
+  try {
+    const { getInfo } = await import('../core/downloader.js');
+    const info = await getInfo(url);
+    res.json(info);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // API: Get download history

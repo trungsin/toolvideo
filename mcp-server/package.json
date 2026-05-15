@@ -1,0 +1,19 @@
+{
+  "name": "@toolvideo/mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server exposing toolvideo (saveclip) video download API to Claude Code / Claude Desktop",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "toolvideo-mcp": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -34,6 +34,7 @@ yarn-error.log*
 
 # package manager
 package-lock.json
+!mcp-server/package-lock.json
 yarn.lock
 pnpm-lock.yaml
 
