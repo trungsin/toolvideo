@@ -7,7 +7,7 @@ import express from 'express';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { download, detectPlatform, isValidUrl } from '../core/downloader.js';
-import { getDownloads, getDownloadById } from '../db/history.js';
+import { getDownloads, getDownloadById, addKaraoke, getKaraokeById } from '../db/history.js';
 import { createReadStream, statSync, existsSync } from 'fs';
 import { convertToKaraoke, checkDependencies } from '../core/karaoke/karaoke-handler.js';
 
@@ -288,6 +288,25 @@ app.post('/api/karaoke', async (req, res) => {
         current.progress = 100;
         current.result = karaokeResult;
       }
+
+      // Persist karaoke job for file serving across pm2 restarts
+      try {
+        addKaraoke({
+          id: karaokeId,
+          url,
+          platform,
+          title: karaokeResult.title,
+          outputFolder: karaokeResult.outputFolder,
+          videoPath: karaokeResult.output,
+          lyricsLrcPath: karaokeResult.lyricsLrc,
+          lyricsAssPath: karaokeResult.lyricsAss,
+          duration: karaokeResult.duration,
+          segments: karaokeResult.segments,
+          lyricsSource: karaokeResult.lyricsSource
+        });
+      } catch (persistErr) {
+        console.error('[karaoke] failed to persist job:', persistErr.message);
+      }
     } catch (error) {
       if (current) {
         current.status = 'error';
@@ -299,34 +318,42 @@ app.post('/api/karaoke', async (req, res) => {
   res.json({ karaokeId, platform });
 });
 
-// API: Serve karaoke files
+// API: Serve karaoke files. Resolves via in-memory map (current session) or
+// persistent karaoke table (survives pm2 restart).
 app.get('/api/karaoke/file/:id/:type', (req, res) => {
   const { id, type } = req.params;
-  const downloadData = activeDownloads.get(id);
 
-  if (!downloadData || downloadData.status !== 'complete') {
+  // Build the { video, lrc, ass } path map from whichever source has it
+  let paths = null;
+  const downloadData = activeDownloads.get(id);
+  if (downloadData && downloadData.status === 'complete' && downloadData.result) {
+    paths = {
+      video: downloadData.result.output,
+      lrc: downloadData.result.lyricsLrc,
+      ass: downloadData.result.lyricsAss
+    };
+  } else {
+    const record = getKaraokeById(id);
+    if (record) {
+      paths = {
+        video: record.video_path,
+        lrc: record.lyrics_lrc_path,
+        ass: record.lyrics_ass_path
+      };
+    }
+  }
+
+  if (!paths) {
     return res.status(404).json({ error: 'File not ready' });
   }
 
-  let filepath;
-  let contentType;
-
-  switch (type) {
-    case 'video':
-      filepath = downloadData.result.output;
-      contentType = 'video/mp4';
-      break;
-    case 'lrc':
-      filepath = downloadData.result.lyricsLrc;
-      contentType = 'text/plain';
-      break;
-    case 'ass':
-      filepath = downloadData.result.lyricsAss;
-      contentType = 'text/plain';
-      break;
-    default:
-      return res.status(400).json({ error: 'Invalid file type' });
+  const contentTypeMap = { video: 'video/mp4', lrc: 'text/plain', ass: 'text/plain' };
+  if (!(type in contentTypeMap)) {
+    return res.status(400).json({ error: 'Invalid file type' });
   }
+
+  const filepath = paths[type];
+  const contentType = contentTypeMap[type];
 
   if (!filepath || !existsSync(filepath)) {
     return res.status(404).json({ error: 'File not found' });

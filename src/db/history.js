@@ -31,6 +31,23 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_platform ON downloads(platform);
   CREATE INDEX IF NOT EXISTS idx_created ON downloads(created_at);
+
+  CREATE TABLE IF NOT EXISTS karaoke (
+    id TEXT PRIMARY KEY,
+    url TEXT,
+    platform TEXT,
+    title TEXT,
+    output_folder TEXT,
+    video_path TEXT,
+    lyrics_lrc_path TEXT,
+    lyrics_ass_path TEXT,
+    duration REAL,
+    segments INTEGER,
+    lyrics_source TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_karaoke_created ON karaoke(created_at);
 `);
 
 /**
@@ -89,6 +106,40 @@ export function getDownloadById(id) {
 export function searchByUrl(url) {
   const stmt = db.prepare(`SELECT * FROM downloads WHERE url = ?`);
   return stmt.get(url);
+}
+
+/**
+ * Persist a completed karaoke job for later file serving.
+ * Uses the in-memory karaoke ID as primary key (no re-mapping needed).
+ */
+export function addKaraoke(data) {
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO karaoke
+    (id, url, platform, title, output_folder, video_path, lyrics_lrc_path, lyrics_ass_path, duration, segments, lyrics_source)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  stmt.run(
+    data.id,
+    data.url || null,
+    data.platform || null,
+    data.title || null,
+    data.outputFolder || null,
+    data.videoPath || null,
+    data.lyricsLrcPath || null,
+    data.lyricsAssPath || null,
+    data.duration || null,
+    data.segments || null,
+    data.lyricsSource || null
+  );
+  return data.id;
+}
+
+/**
+ * Look up a karaoke job by ID for file serving after pm2 restart.
+ */
+export function getKaraokeById(id) {
+  const stmt = db.prepare(`SELECT * FROM karaoke WHERE id = ?`);
+  return stmt.get(id);
 }
 
 export default db;
