@@ -9,7 +9,6 @@
  */
 
 const { stdin, env } = require('process');
-const { execSync } = require('child_process');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
@@ -18,24 +17,11 @@ const path = require('path');
 const { green, yellow, red, cyan, magenta, dim, coloredBar, RESET, shouldUseColor } = require('./hooks/lib/colors.cjs');
 const { parseTranscript } = require('./hooks/lib/transcript-parser.cjs');
 const { countConfigs } = require('./hooks/lib/config-counter.cjs');
+const { loadConfig } = require('./hooks/lib/ck-config-utils.cjs');
+const { getGitInfo } = require('./hooks/lib/git-info-cache.cjs');
 
 // Buffer constant matching /context output (22.5% of 200k)
 const AUTOCOMPACT_BUFFER = 45000;
-
-/**
- * Safe command execution wrapper
- */
-function exec(cmd) {
-  try {
-    return execSync(cmd, {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'ignore'],
-      windowsHide: true
-    }).trim();
-  } catch {
-    return '';
-  }
-}
 
 /**
  * Expand home directory to ~
@@ -56,9 +42,6 @@ function getTerminalWidth() {
     const parsed = parseInt(env.COLUMNS, 10);
     if (!isNaN(parsed) && parsed > 0) return parsed;
   }
-  // Subprocess fallback
-  const tputCols = exec('tput cols');
-  if (tputCols && /^\d+$/.test(tputCols)) return parseInt(tputCols, 10);
   return 120; // Safe default
 }
 
@@ -110,6 +93,17 @@ async function readStdin() {
 // ============================================================================
 
 /**
+ * Build usage time string with optional percentage
+ * @returns {string|null} Formatted usage string or null if unavailable
+ */
+function buildUsageString(ctx) {
+  if (!ctx.sessionText || ctx.sessionText === 'N/A') return null;
+  let str = ctx.sessionText.replace(' until reset', ' left');
+  if (ctx.usagePercent != null) str += ` (${Math.round(ctx.usagePercent)}%)`;
+  return str;
+}
+
+/**
  * Render session lines with multi-level responsive wrapping
  * Combines parts based on content length vs terminal width
  * Tries to minimize lines while keeping content readable
@@ -144,16 +138,20 @@ function renderSessionLines(ctx) {
   let locationPart = branchPart ? `${dirPart}  ${branchPart}` : dirPart;
   if (planPart) locationPart += `  ${planPart}`;
 
-  // Build session part: 🤖 model  contextBar%
+  // Build session part: 🤖 model  contextBar%  ⌛ time left (usage%)
   let sessionPart = `🤖 ${ctx.modelName}`;
   if (ctx.contextPercent > 0) {
     sessionPart += `  ${coloredBar(ctx.contextPercent, 12)} ${ctx.contextPercent}%`;
   }
+  // Add usage/reset info to session part (stays on line 1 with model - Claude Code only reads line 1)
+  const usageStr = buildUsageString(ctx);
+  if (usageStr) {
+    sessionPart += `  ⌛ ${usageStr.replace(/\)$/, ' used)')}`;
+  }
 
-  // Build stats part
+  // Build stats part (only lines changed now)
   const statsItems = [];
-  if (ctx.sessionText) statsItems.push(`⌛ ${ctx.sessionText.replace(' until reset', '')}`);
-  if (ctx.costText) statsItems.push(`💵 ${ctx.costText.replace(/(\.\d{2})\d+/, '$1')}`);
+  // if (ctx.costText) statsItems.push(`💵 ${ctx.costText.replace(/(\.\d{2})\d+/, '$1')}`);
   if (ctx.linesAdded > 0 || ctx.linesRemoved > 0) {
     statsItems.push(`📝 ${green(`+${ctx.linesAdded}`)} ${red(`-${ctx.linesRemoved}`)}`);
   }
@@ -164,38 +162,32 @@ function renderSessionLines(ctx) {
   const sessionLen = visibleLength(sessionPart);
   const statsLen = visibleLength(statsPart);
 
-  // Try combinations from most compact to most spread out
-  const allOneLine = `${locationPart}  ${sessionPart}  ${statsPart}`;
-  const locationSession = `${locationPart}  ${sessionPart}`;
+  // Layout priority: SESSION FIRST (Claude Code only reads line 1)
+  // Line 1: model + context + usage (most important for Claude Code)
+  // Line 2+: location, git, stats
+  const allOneLine = `${sessionPart}  ${locationPart}  ${statsPart}`;
+  const sessionLocation = `${sessionPart}  ${locationPart}`;
   const sessionStats = `${sessionPart}  ${statsPart}`;
 
   if (visibleLength(allOneLine) <= threshold && statsLen > 0) {
-    // Ultra-wide: everything on one line
+    // Ultra-wide: everything on one line (session first)
     lines.push(allOneLine);
-  } else if (visibleLength(locationSession) <= threshold) {
-    // Wide: location+session | stats (or session+stats if stats fit)
-    lines.push(locationSession);
+  } else if (visibleLength(sessionLocation) <= threshold) {
+    // Wide: session+location on line 1 | stats on line 2
+    lines.push(sessionLocation);
     if (statsLen > 0) lines.push(statsPart);
-  } else if (locationLen <= threshold) {
-    // Medium: location | session+stats or session | stats
+  } else if (sessionLen <= threshold) {
+    // Medium: session on line 1 | location on line 2 | stats on line 3
+    lines.push(sessionPart);
     lines.push(locationPart);
-    if (statsLen > 0 && visibleLength(sessionStats) <= threshold) {
-      lines.push(sessionStats);
-    } else {
-      lines.push(sessionPart);
-      if (statsLen > 0) lines.push(statsPart);
-    }
+    if (statsLen > 0) lines.push(statsPart);
   } else {
-    // Narrow: dir | branch | plan | session+stats or session | stats
+    // Narrow: session | dir | branch | stats (each on own line)
+    lines.push(sessionPart);
     lines.push(dirPart);
     if (branchPart) lines.push(branchPart);
     if (planPart) lines.push(planPart);
-    if (statsLen > 0 && visibleLength(sessionStats) <= threshold) {
-      lines.push(sessionStats);
-    } else {
-      lines.push(sessionPart);
-      if (statsLen > 0) lines.push(statsPart);
-    }
+    if (statsLen > 0) lines.push(statsPart);
   }
 
   return lines;
@@ -308,6 +300,42 @@ function renderTodosLine(transcript) {
 }
 
 /**
+ * Render minimal mode - single line with emojis, no progress bar
+ * Format: "🤖 opus 4.5  🔋 50%  ⏰ 2h 16m (38%)  🌿 branch  📁 ~/path"
+ */
+function renderMinimal(ctx) {
+  const parts = [`🤖 ${ctx.modelName}`];
+  if (ctx.contextPercent > 0) {
+    const batteryIcon = ctx.contextPercent > 70 ? red('🔋') : '🔋';
+    parts.push(`${batteryIcon} ${ctx.contextPercent}%`);
+  }
+  const usageStr = buildUsageString(ctx);
+  if (usageStr) parts.push(`⏰ ${usageStr}`);
+  if (ctx.gitBranch) parts.push(`🌿 ${ctx.gitBranch}`);
+  parts.push(`📁 ${ctx.currentDir}`);
+  console.log(parts.join('  '));
+}
+
+/**
+ * Render compact mode - 2 lines: session info + location (branch + dir)
+ */
+function renderCompact(ctx) {
+  // Line 1: Session info (model + context + usage)
+  let line1 = `🤖 ${ctx.modelName}`;
+  if (ctx.contextPercent > 0) {
+    line1 += `  ${coloredBar(ctx.contextPercent, 12)} ${ctx.contextPercent}%`;
+  }
+  const usageStr = buildUsageString(ctx);
+  if (usageStr) line1 += `  ⌛ ${usageStr}`;
+  console.log(line1.replace(/ /g, '\u00A0'));
+
+  // Line 2: Location (branch + directory)
+  let line2 = `📁 ${ctx.currentDir}`;
+  if (ctx.gitBranch) line2 += `  🌿 ${ctx.gitBranch}`;
+  console.log(line2.replace(/ /g, '\u00A0'));
+}
+
+/**
  * Main render function - outputs all lines
  * Falls back to single line if multi-line fails
  */
@@ -355,34 +383,21 @@ async function main() {
 
     const modelName = data.model?.display_name || 'Claude';
 
-    // Git detection
-    let gitBranch = '';
-    let gitUnstaged = 0;
-    let gitStaged = 0;
-    let gitAhead = 0;
-    let gitBehind = 0;
-    if (exec('git rev-parse --git-dir')) {
-      gitBranch = exec('git branch --show-current') || exec('git rev-parse --short HEAD');
-      const unstagedOutput = exec('git diff --name-only');
-      if (unstagedOutput) gitUnstaged = unstagedOutput.split('\n').filter(l => l.trim()).length;
-      // Staged files count
-      const stagedOutput = exec('git diff --cached --name-only');
-      if (stagedOutput) gitStaged = stagedOutput.split('\n').filter(l => l.trim()).length;
-      // Ahead/behind upstream
-      const aheadBehind = exec('git rev-list --left-right --count @{u}...HEAD 2>/dev/null');
-      if (aheadBehind) {
-        const parts = aheadBehind.split(/\s+/);
-        gitBehind = parseInt(parts[0], 10) || 0;
-        gitAhead = parseInt(parts[1], 10) || 0;
-      }
-    }
+    // Git detection using batched cache
+    const rawDir = data.workspace?.current_dir || data.cwd || process.cwd();
+    const gitInfo = getGitInfo(rawDir);
+    const gitBranch = gitInfo?.branch || '';
+    const gitUnstaged = gitInfo?.unstaged || 0;
+    const gitStaged = gitInfo?.staged || 0;
+    const gitAhead = gitInfo?.ahead || 0;
+    const gitBehind = gitInfo?.behind || 0;
 
     // Active plan detection - read from session temp file
     let activePlan = '';
     try {
       const sessionId = data.session_id;
       if (sessionId) {
-        const sessionPath = `/tmp/ck-session-${sessionId}.json`;
+        const sessionPath = path.join(os.tmpdir(), `ck-session-${sessionId}.json`);
         if (fs.existsSync(sessionPath)) {
           const session = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
           const planPath = session.activePlan?.trim();
@@ -399,44 +414,65 @@ async function main() {
     const usage = data.context_window?.current_usage || {};
     const contextSize = data.context_window?.context_window_size || 0;
     let contextPercent = 0;
+    let totalTokens = 0;
 
     if (contextSize > 0 && contextSize > AUTOCOMPACT_BUFFER) {
-      const totalTokens = (usage.input_tokens ?? 0) +
-                          (usage.cache_creation_input_tokens ?? 0) +
-                          (usage.cache_read_input_tokens ?? 0);
+      totalTokens = (usage.input_tokens ?? 0) +
+                    (usage.cache_creation_input_tokens ?? 0) +
+                    (usage.cache_read_input_tokens ?? 0);
 
       // Add buffer to match /context calculation
       contextPercent = Math.min(100, Math.round(((totalTokens + AUTOCOMPACT_BUFFER) / contextSize) * 100));
     }
 
-    // Session timer
+    // Write context data to temp file for hooks to read
+    const sessionId = data.session_id;
+    if (sessionId && contextSize > 0) {
+      try {
+        const contextDataPath = path.join(os.tmpdir(), `ck-context-${sessionId}.json`);
+        fs.writeFileSync(contextDataPath, JSON.stringify({
+          percent: contextPercent,
+          tokens: totalTokens,
+          size: contextSize,
+          usage: usage,
+          timestamp: Date.now()
+        }));
+      } catch {}
+    }
+
+    // Session timer - read actual reset time from usage limits cache
     let sessionText = '';
     const transcriptPath = data.transcript_path;
 
     // Parse transcript for tools/agents/todos
     const transcript = transcriptPath ? await parseTranscript(transcriptPath) : { tools: [], agents: [], todos: [], sessionStart: null };
 
-    // Calculate session timer from transcript
-    if (transcriptPath && fs.existsSync(transcriptPath)) {
-      try {
-        const now = new Date();
-        const currentUtcHour = now.getUTCHours();
-        const blockStart = Math.floor(currentUtcHour / 5) * 5;
-        let blockEnd = blockStart + 5;
-        let blockEndDate = new Date(now);
-        if (blockEnd >= 24) {
-          blockEnd -= 24;
-          blockEndDate.setUTCDate(blockEndDate.getUTCDate() + 1);
+    // Read actual reset time and utilization from usage limits cache (written by usage-context-awareness hook)
+    let usagePercent = null;
+    try {
+      const usageCachePath = path.join(os.tmpdir(), 'ck-usage-limits-cache.json');
+      if (fs.existsSync(usageCachePath)) {
+        const cache = JSON.parse(fs.readFileSync(usageCachePath, 'utf8'));
+
+        // Check status flag for fallback (non-OAuth scenarios)
+        if (cache.status === 'unavailable') {
+          sessionText = 'N/A';
+        } else {
+          const fiveHour = cache.data?.five_hour;
+          usagePercent = fiveHour?.utilization ?? null;
+          const resetAt = fiveHour?.resets_at;
+          if (resetAt) {
+            const resetTime = new Date(resetAt);
+            const remaining = Math.floor(resetTime.getTime() / 1000) - Math.floor(Date.now() / 1000);
+            if (remaining > 0 && remaining < 18000) {
+              const rh = Math.floor(remaining / 3600);
+              const rm = Math.floor((remaining % 3600) / 60);
+              sessionText = `${rh}h ${rm}m until reset`;
+            }
+          }
         }
-        blockEndDate.setUTCHours(blockEnd, 0, 0, 0);
-        const remaining = Math.floor(blockEndDate.getTime() / 1000) - Math.floor(Date.now() / 1000);
-        if (remaining > 0 && remaining < 18000) {
-          const rh = Math.floor(remaining / 3600);
-          const rm = Math.floor((remaining % 3600) / 60);
-          sessionText = `${rh}h ${rm}m until reset`;
-        }
-      } catch {}
-    }
+      }
+    } catch {}
 
     // Cost and lines changed
     const billingMode = env.CLAUDE_BILLING_MODE || 'api';
@@ -448,7 +484,6 @@ async function main() {
     const linesRemoved = data.cost?.total_lines_removed || 0;
 
     // Config counts
-    const rawDir = data.workspace?.current_dir || data.cwd || process.cwd();
     const configs = countConfigs(rawDir);
 
     // Build render context
@@ -463,6 +498,7 @@ async function main() {
       activePlan,
       contextPercent,
       sessionText,
+      usagePercent,
       costText,
       linesAdded,
       linesRemoved,
@@ -470,8 +506,26 @@ async function main() {
       transcript
     };
 
-    // Render (multi-line by default)
-    render(ctx, false);
+    // Load config and get statusline mode
+    const config = loadConfig({ includeProject: false, includeAssertions: false, includeLocale: false });
+    const statuslineMode = config.statusline || 'full';
+
+    // Render based on mode
+    switch (statuslineMode) {
+      case 'none':
+        console.log('');
+        break;
+      case 'minimal':
+        renderMinimal(ctx);
+        break;
+      case 'compact':
+        renderCompact(ctx);
+        break;
+      case 'full':
+      default:
+        render(ctx, false);
+        break;
+    }
 
   } catch (err) {
     // Fallback: output minimal single line on any error

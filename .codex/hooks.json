@@ -1,0 +1,40 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Glob|Grep|Read|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node '/Users/admin/projects/toolvideo/.codex/hooks/scout-block.cjs'"
+          },
+          {
+            "type": "command",
+            "command": "node '/Users/admin/projects/toolvideo/.codex/hooks/privacy-block.cjs'"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node '/Users/admin/projects/toolvideo/.codex/hooks/session-init.cjs'"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node '/Users/admin/projects/toolvideo/.codex/hooks/dev-rules-reminder.cjs'"
+          }
+        ]
+      }
+    ]
+  }
+}

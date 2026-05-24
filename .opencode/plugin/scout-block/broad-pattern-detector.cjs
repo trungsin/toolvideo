@@ -24,16 +24,14 @@ const BROAD_PATTERN_REGEXES = [
   /^\*\*\/\*$/,
   // **/. - all dotfiles everywhere
   /^\*\*\/\.\*$/,
-  // **/*.ext - all files with extension (catches .ts, .py, .java, etc.)
-  /^\*\*\/\*\.\w+$/,
-  // **/*.{ext,ext2} - all files with multiple extensions
-  /^\*\*\/\*\.\{[^}]+\}$/,
-  // **/name.ext - all files with specific name anywhere
-  /^\*\*\/[\w-]+\.\w+$/,
   // *.ext at root (matches all in root, but combined with deep search)
   /^\*\.\w+$/,
   // *.{ext,ext2} at root
   /^\*\.\{[^}]+\}$/,
+  // **/*.ext - all files of type everywhere (e.g., **/*.ts, **/*.js)
+  /^\*\*\/\*\.\w+$/,
+  // **/*.{ext,ext2} - all files of multiple types everywhere
+  /^\*\*\/\*\.\{[^}]+\}$/,
 ];
 
 // Common source directories that indicate a more specific search

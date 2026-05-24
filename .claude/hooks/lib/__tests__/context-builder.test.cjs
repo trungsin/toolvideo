@@ -260,6 +260,24 @@ describe('context-builder.cjs', () => {
       assert.ok(lines.some(l => l.includes('Rules')), 'Should include Rules header');
     });
 
+    it('buildRulesSection uses absolute paths when provided (Issue #476)', () => {
+      const lines = contextBuilder.buildRulesSection({
+        plansPath: '/Users/test/project/plans',
+        docsPath: '/Users/test/project/docs'
+      });
+      const joined = lines.join('\n');
+      assert.ok(joined.includes('/Users/test/project/plans'), 'Should include absolute plans path');
+      assert.ok(joined.includes('/Users/test/project/docs'), 'Should include absolute docs path');
+      assert.ok(!joined.includes('Plans → "plans/"'), 'Should NOT use bare relative "plans/" when absolute path provided');
+    });
+
+    it('buildRulesSection falls back to relative when no paths provided (Issue #476)', () => {
+      const lines = contextBuilder.buildRulesSection({});
+      const joined = lines.join('\n');
+      assert.ok(joined.includes('"plans"'), 'Should fall back to relative plans');
+      assert.ok(joined.includes('"docs"'), 'Should fall back to relative docs');
+    });
+
     it('buildModularizationSection returns array with Modularization', () => {
       const lines = contextBuilder.buildModularizationSection();
       assert.ok(Array.isArray(lines), 'Should return array');
@@ -285,6 +303,83 @@ describe('context-builder.cjs', () => {
       });
       assert.ok(Array.isArray(lines), 'Should return array');
       assert.ok(lines.some(l => l.includes('Naming')), 'Should include Naming');
+    });
+
+  });
+
+  describe('Hooks config behavior (Issue #413)', () => {
+    let tempDir;
+    let originalCwd;
+
+    before(() => {
+      originalCwd = process.cwd();
+    });
+
+    after(() => {
+      process.chdir(originalCwd);
+      if (tempDir) cleanupTempDir(tempDir);
+    });
+
+    it('disables context section when context-tracking: false', () => {
+      tempDir = createTempDir(['.claude']);
+      const settingsPath = path.join(tempDir, '.claude', 'settings.json');
+      fs.writeFileSync(settingsPath, JSON.stringify({
+        hooks: {
+          'context-tracking': false
+        }
+      }));
+      process.chdir(tempDir);
+
+      const result = contextBuilder.buildReminderContext({});
+
+      assert.ok(Array.isArray(result.sections.context), 'context should be array');
+      assert.strictEqual(result.sections.context.length, 0, 'context section should be empty');
+    });
+
+    it('disables usage section when usage-context-awareness: false', () => {
+      tempDir = createTempDir(['.claude']);
+      const settingsPath = path.join(tempDir, '.claude', 'settings.json');
+      fs.writeFileSync(settingsPath, JSON.stringify({
+        hooks: {
+          'usage-context-awareness': false
+        }
+      }));
+      process.chdir(tempDir);
+
+      const result = contextBuilder.buildReminderContext({});
+
+      assert.ok(Array.isArray(result.sections.usage), 'usage should be array');
+      assert.strictEqual(result.sections.usage.length, 0, 'usage section should be empty');
+    });
+
+    it('disables both sections when both hooks false', () => {
+      tempDir = createTempDir(['.claude']);
+      const settingsPath = path.join(tempDir, '.claude', 'settings.json');
+      fs.writeFileSync(settingsPath, JSON.stringify({
+        hooks: {
+          'context-tracking': false,
+          'usage-context-awareness': false
+        }
+      }));
+      process.chdir(tempDir);
+
+      const result = contextBuilder.buildReminderContext({});
+
+      assert.strictEqual(result.sections.context.length, 0, 'context section should be empty');
+      assert.strictEqual(result.sections.usage.length, 0, 'usage section should be empty');
+    });
+
+    it('enables sections by default when hooks undefined', () => {
+      tempDir = createTempDir(['.claude']);
+      const settingsPath = path.join(tempDir, '.claude', 'settings.json');
+      fs.writeFileSync(settingsPath, JSON.stringify({}));
+      process.chdir(tempDir);
+
+      const result = contextBuilder.buildReminderContext({});
+
+      assert.ok(Array.isArray(result.sections.context), 'context should be array');
+      assert.ok(Array.isArray(result.sections.usage), 'usage should be array');
+      // Enabled sections may be empty or populated - just verify they exist
     });
 
   });

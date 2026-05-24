@@ -54,12 +54,35 @@ const DEFAULT_CONFIG = {
     packageManager: 'auto',
     framework: 'auto'
   },
-  assertions: []
+  skills: {
+    research: {
+      useGemini: true  // Toggle Gemini CLI usage in research skill
+    }
+  },
+  assertions: [],
+  statusline: 'full',
+  hooks: {
+    'session-init': true,
+    'subagent-init': true,
+    'dev-rules-reminder': true,
+    'usage-context-awareness': true,
+    'context-tracking': true,
+    'scout-block': true,
+    'privacy-block': true,
+    'post-edit-simplify-reminder': true,
+    'task-completed-handler': true,
+    'teammate-idle-handler': true
+  }
 };
 
 /**
  * Deep merge objects (source values override target, nested objects merged recursively)
  * Arrays are replaced entirely (not concatenated) to avoid duplicate entries
+ *
+ * IMPORTANT: Empty objects {} are treated as "inherit from parent", not "replace with empty".
+ * This allows global config to set hooks.foo: false and have it persist even when
+ * local config has hooks: {} (empty = inherit, not reset to defaults).
+ *
  * @param {Object} target - Base object
  * @param {Object} source - Object to merge (takes precedence)
  * @returns {Object} Merged object
@@ -78,7 +101,13 @@ function deepMerge(target, source) {
       result[key] = [...sourceVal];
     }
     // Objects: recurse (but not null)
+    // SKIP empty objects - treat {} as "inherit from parent"
     else if (sourceVal !== null && typeof sourceVal === 'object' && !Array.isArray(sourceVal)) {
+      // Empty object = inherit (don't override parent values)
+      if (Object.keys(sourceVal).length === 0) {
+        // Keep target value unchanged - empty source means "no override"
+        continue;
+      }
       result[key] = deepMerge(targetVal || {}, sourceVal);
     }
     // Primitives: source wins
@@ -487,6 +516,12 @@ function loadConfig(options = {}) {
     // -1 = disabled (no injection, saves tokens)
     // 0-5 = inject corresponding level guidelines
     result.codingLevel = merged.codingLevel ?? -1;
+    // Skills configuration
+    result.skills = merged.skills || DEFAULT_CONFIG.skills;
+    // Hooks configuration
+    result.hooks = merged.hooks || DEFAULT_CONFIG.hooks;
+    // Statusline mode
+    result.statusline = merged.statusline || 'full';
 
     return sanitizeConfig(result, projectRoot);
   } catch (e) {
@@ -502,7 +537,10 @@ function getDefaultConfig(includeProject = true, includeAssertions = true, inclu
     plan: { ...DEFAULT_CONFIG.plan },
     paths: { ...DEFAULT_CONFIG.paths },
     docs: { ...DEFAULT_CONFIG.docs },
-    codingLevel: -1  // Default: disabled (no injection, saves tokens)
+    codingLevel: -1,  // Default: disabled (no injection, saves tokens)
+    skills: { ...DEFAULT_CONFIG.skills },
+    hooks: { ...DEFAULT_CONFIG.hooks },
+    statusline: 'full'
   };
   if (includeLocale) {
     result.locale = { ...DEFAULT_CONFIG.locale };
@@ -728,6 +766,36 @@ function getGitRoot(cwd = null) {
   return execSafe('git rev-parse --show-toplevel', { cwd: cwd || undefined });
 }
 
+/**
+ * Extract task list ID from plan resolution for Claude Code Tasks coordination
+ * Only returns ID for session-resolved plans (explicitly active, not branch-suggested)
+ *
+ * Cross-platform: path.basename() handles both Unix/Windows separators
+ *
+ * @param {{ path: string|null, resolvedBy: 'session'|'branch'|null }} resolved - Plan resolution result
+ * @returns {string|null} Task list ID (plan directory name) or null
+ */
+function extractTaskListId(resolved) {
+  if (!resolved || resolved.resolvedBy !== 'session' || !resolved.path) {
+    return null;
+  }
+  return path.basename(resolved.path);
+}
+
+/**
+ * Check if a hook is enabled in config
+ * Returns true if hook is not defined (default enabled)
+ *
+ * @param {string} hookName - Hook name (script basename without .cjs)
+ * @returns {boolean} Whether hook is enabled
+ */
+function isHookEnabled(hookName) {
+  const config = loadConfig({ includeProject: false, includeAssertions: false, includeLocale: false });
+  const hooks = config.hooks || {};
+  // Return true if undefined (default enabled), otherwise return the boolean value
+  return hooks[hookName] !== false;
+}
+
 module.exports = {
   CONFIG_PATH,
   LOCAL_CONFIG_PATH,
@@ -757,5 +825,7 @@ module.exports = {
   validateNamingPattern,
   resolveNamingPattern,
   getGitBranch,
-  getGitRoot
+  getGitRoot,
+  extractTaskListId,
+  isHookEnabled
 };

@@ -23,15 +23,40 @@ const { detectBroadPatternIssue } = require('../scout-block/broad-pattern-detect
 // Handles flags and filters: npm build, pnpm --filter web run build, yarn workspace app build
 const BUILD_COMMAND_PATTERN = /^(npm|pnpm|yarn|bun)\s+([^\s]+\s+)*(run\s+)?(build|test|lint|dev|start|install|ci|add|remove|update|publish|pack|init|create|exec)/;
 
-// Tool commands - go, cargo, make, mvn/mvnw, gradle/gradlew, dotnet, docker, bazel, cmake, sbt, flutter, swift, ant, ninja, meson
-const TOOL_COMMAND_PATTERN = /^(\.\/)?(npx|pnpx|bunx|tsc|esbuild|vite|webpack|rollup|turbo|nx|jest|vitest|mocha|eslint|prettier|go|cargo|make|mvn|mvnw|gradle|gradlew|dotnet|docker|podman|kubectl|helm|terraform|ansible|bazel|cmake|sbt|flutter|swift|ant|ninja|meson)/;
+// Tool commands - JS/TS, Go, Rust, Java, .NET, containers, IaC, Python, Ruby, PHP, Deno, Elixir
+const TOOL_COMMAND_PATTERN = /^(\.\/)?(npx|pnpx|bunx|tsc|esbuild|vite|webpack|rollup|turbo|nx|jest|vitest|mocha|eslint|prettier|go|cargo|make|mvn|mvnw|gradle|gradlew|dotnet|docker|podman|kubectl|helm|terraform|ansible|bazel|cmake|sbt|flutter|swift|ant|ninja|meson|python3?|pip|uv|deno|bundle|rake|gem|php|composer|ruby|mix|elixir)/;
 
 // Allow execution from .venv/bin/ or venv/bin/ (Unix) and .venv/Scripts/ or venv/Scripts/ (Windows)
 const VENV_EXECUTABLE_PATTERN = /(^|[\/\\])\.?venv[\/\\](bin|Scripts)[\/\\]/;
 
+// Allow Python venv creation commands (cross-platform):
+// - python/python3 -m venv (Unix/macOS/Windows)
+// - py -m venv (Windows py launcher, supports -3, -3.11, etc.)
+// - uv venv (fast Rust-based Python package manager)
+// - virtualenv (legacy but still widely used)
+const VENV_CREATION_PATTERN = /^(python3?|py)\s+(-[\w.]+\s+)*-m\s+venv\s+|^uv\s+venv(\s|$)|^virtualenv\s+/;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Strip leading ENV variable assignments and command wrappers (sudo, env, etc.)
+ * e.g., "NODE_ENV=production npm run build" → "npm run build"
+ * @param {string} command - The command to strip
+ * @returns {string}
+ */
+function stripCommandPrefix(command) {
+  if (!command || typeof command !== 'string') return command;
+  let stripped = command.trim();
+  // Strip env var assignments (KEY=VALUE KEY2=VALUE2 ...)
+  stripped = stripped.replace(/^(\w+=\S+\s+)+/, '');
+  // Strip common command wrappers (one level)
+  stripped = stripped.replace(/^(sudo|env|nice|nohup|time|timeout)\s+/, '');
+  // Strip env vars again (sudo env VAR=x cmd)
+  stripped = stripped.replace(/^(\w+=\S+\s+)+/, '');
+  return stripped.trim();
+}
 
 /**
  * Check if a command is a build/tooling command (should be allowed)
@@ -45,6 +70,34 @@ function isBuildCommand(command) {
 }
 
 /**
+ * Split a compound command into sub-commands on &&, ||, and ;.
+ * Does NOT split on newlines — newlines in command strings are typically
+ * heredoc bodies or multiline strings, not compound operators.
+ * Does not handle operators inside quoted strings (extremely rare in practice).
+ *
+ * @param {string} command - The compound command string
+ * @returns {string[]} Array of sub-commands (trimmed, non-empty)
+ */
+function splitCompoundCommand(command) {
+  if (!command || typeof command !== 'string') return [];
+  return command.split(/\s*(?:&&|\|\||;)\s*/).filter(cmd => cmd && cmd.trim().length > 0);
+}
+
+/**
+ * Unwrap shell executor wrappers (bash -c "...", sh -c '...', eval "...").
+ * Returns the inner command string for re-processing.
+ * @param {string} command - The command to unwrap
+ * @returns {string} Inner command, or original if not a shell executor
+ */
+function unwrapShellExecutor(command) {
+  if (!command || typeof command !== 'string') return command;
+  const match = command.trim().match(
+    /^(?:(?:bash|sh|zsh)\s+-c|eval)\s+["'](.+)["']\s*$/
+  );
+  return match ? match[1] : command;
+}
+
+/**
  * Check if command executes from a .venv bin directory
  * @param {string} command - The command to check
  * @returns {boolean}
@@ -55,12 +108,24 @@ function isVenvExecutable(command) {
 }
 
 /**
- * Check if command should be allowed (build or venv executable)
+ * Check if command creates a Python virtual environment
+ * @param {string} command - The command to check
+ * @returns {boolean}
+ */
+function isVenvCreationCommand(command) {
+  if (!command || typeof command !== 'string') return false;
+  return VENV_CREATION_PATTERN.test(command.trim());
+}
+
+/**
+ * Check if command should be allowed (build, venv executable, or venv creation)
+ * Strips ENV prefixes and command wrappers before checking.
  * @param {string} command - The command to check
  * @returns {boolean}
  */
 function isAllowedCommand(command) {
-  return isBuildCommand(command) || isVenvExecutable(command);
+  const stripped = stripCommandPrefix(command);
+  return isBuildCommand(stripped) || isVenvExecutable(stripped) || isVenvCreationCommand(stripped);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -94,9 +159,30 @@ function checkScoutBlock({ toolName, toolInput, options = {} }) {
     checkBroadPatterns = true
   } = options;
 
-  // Check if it's a build command or venv executable (allowed regardless of paths)
-  if (toolInput.command && isAllowedCommand(toolInput.command)) {
-    return { blocked: false, isAllowedCommand: true };
+  // Unwrap shell executor wrappers (bash -c "...", eval "...")
+  // so the inner command gets properly analyzed
+  if (toolInput.command) {
+    const unwrapped = unwrapShellExecutor(toolInput.command);
+    if (unwrapped !== toolInput.command) {
+      toolInput = { ...toolInput, command: unwrapped };
+    }
+  }
+
+  // For Bash commands, split compound commands (&&, ||, ;) and check
+  // each sub-command independently. This prevents "echo msg && npm run build"
+  // from being blocked due to "build" token in the allowed build sub-command.
+  // Must split BEFORE isAllowedCommand because BUILD_COMMAND_PATTERN has no end
+  // anchor and would match the prefix of "npm run build && cat dist/file.js".
+  if (toolInput.command) {
+    const subCommands = splitCompoundCommand(toolInput.command);
+    const nonAllowed = subCommands.filter(cmd => !isAllowedCommand(cmd.trim()));
+    if (nonAllowed.length === 0) {
+      return { blocked: false, isAllowedCommand: true };
+    }
+    // Only extract paths from non-allowed sub-commands
+    if (nonAllowed.length < subCommands.length) {
+      toolInput = { ...toolInput, command: nonAllowed.join(' ; ') };
+    }
   }
 
   // Check for overly broad glob patterns (Glob tool)
@@ -156,7 +242,11 @@ module.exports = {
   // Command checkers
   isBuildCommand,
   isVenvExecutable,
+  isVenvCreationCommand,
   isAllowedCommand,
+  splitCompoundCommand,
+  stripCommandPrefix,
+  unwrapShellExecutor,
 
   // Re-export scout-block modules for direct access
   loadPatterns,
@@ -168,5 +258,6 @@ module.exports = {
   // Patterns (for testing)
   BUILD_COMMAND_PATTERN,
   TOOL_COMMAND_PATTERN,
-  VENV_EXECUTABLE_PATTERN
+  VENV_EXECUTABLE_PATTERN,
+  VENV_CREATION_PATTERN
 };

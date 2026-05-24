@@ -11,36 +11,142 @@
  * Core detection logic extracted to lib/project-detector.cjs for OpenCode plugin reuse.
  */
 
-const fs = require('fs');
-const path = require('path');
-const {
-  loadConfig,
-  writeEnv,
-  writeSessionState,
-  resolvePlanPath,
-  getReportsPath,
-  resolveNamingPattern
-} = require('./lib/ck-config-utils.cjs');
+// Crash wrapper
+try {
+  const fs = require('fs');
+  const path = require('path');
+  const os = require('os');
+  const {
+    loadConfig,
+    writeEnv,
+    writeSessionState,
+    resolvePlanPath,
+    getReportsPath,
+    resolveNamingPattern,
+    extractTaskListId,
+    isHookEnabled
+  } = require('./lib/ck-config-utils.cjs');
 
-// Import shared project detection logic
-const {
-  detectProjectType,
-  detectPackageManager,
-  detectFramework,
-  getPythonVersion,
-  getGitRemoteUrl,
-  getGitBranch,
-  getCodingLevelStyleName,
-  getCodingLevelGuidelines,
-  buildContextOutput,
-  execSafe
-} = require('./lib/project-detector.cjs');
+  // Early exit if hook disabled in config
+  if (!isHookEnabled('session-init')) {
+    process.exit(0);
+  }
+
+  // Import shared project detection logic
+  const {
+    detectProjectType,
+    detectPackageManager,
+    detectFramework,
+    getPythonVersion,
+    getGitRemoteUrl,
+    getGitBranch,
+    getGitRoot,
+    getCodingLevelStyleName,
+    getCodingLevelGuidelines,
+    buildContextOutput,
+    execSafe
+  } = require('./lib/project-detector.cjs');
+
+/**
+ * One-time cleanup for orphaned .shadowed/ directories from skill-dedup hook (Issue #422)
+ * The hook was disabled due to race conditions; this restores any orphaned skills.
+ */
+function cleanupOrphanedShadowedSkills() {
+  const shadowedDir = path.join(process.cwd(), '.claude', 'skills', '.shadowed');
+  if (!fs.existsSync(shadowedDir)) return { restored: [], skipped: [], kept: [] };
+
+  const skillsDir = path.join(process.cwd(), '.claude', 'skills');
+  const restored = [];
+  const skipped = [];
+  const kept = []; // Skills kept for manual review (content differs)
+
+  try {
+    const entries = fs.readdirSync(shadowedDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const src = path.join(shadowedDir, entry.name);
+      const dest = path.join(skillsDir, entry.name);
+
+      try {
+        if (!fs.existsSync(dest)) {
+          fs.renameSync(src, dest);
+          restored.push(entry.name);
+        } else {
+          // Skill exists in local - verify content match before deleting orphaned copy
+          const orphanedSkill = path.join(src, 'SKILL.md');
+          const localSkill = path.join(dest, 'SKILL.md');
+          if (fs.existsSync(orphanedSkill) && fs.existsSync(localSkill)) {
+            const orphanedContent = fs.readFileSync(orphanedSkill, 'utf8');
+            const localContent = fs.readFileSync(localSkill, 'utf8');
+            if (orphanedContent === localContent) {
+              // Content identical - safe to remove orphaned duplicate
+              fs.rmSync(src, { recursive: true, force: true });
+              skipped.push(entry.name);
+            } else {
+              // Content differs - user may have edited orphaned version, keep for review
+              kept.push(entry.name);
+            }
+          } else {
+            // Missing SKILL.md - safe to remove orphaned copy
+            fs.rmSync(src, { recursive: true, force: true });
+            skipped.push(entry.name);
+          }
+        }
+      } catch (err) {
+        process.stderr.write(`[session-init] Failed to process "${entry.name}": ${err.message}\n`);
+      }
+    }
+    // Clean up manifest and shadowed dir if empty
+    const manifestFile = path.join(shadowedDir, '.dedup-manifest.json');
+    if (fs.existsSync(manifestFile)) fs.unlinkSync(manifestFile);
+    // Only remove shadowed dir if empty (kept skills may remain)
+    const remaining = fs.readdirSync(shadowedDir);
+    if (remaining.length === 0) fs.rmdirSync(shadowedDir);
+    return { restored, skipped, kept };
+  } catch (err) {
+    process.stderr.write(`[session-init] Shadowed cleanup error: ${err.message}\n`);
+    return { restored, skipped, kept };
+  }
+}
+
+/**
+ * Detect if this session is running inside an Agent Team.
+ * Scans ~/.claude/teams/ for active team configs and checks membership.
+ * Note: Returns first team found — Claude Code supports one team per session.
+ * Note: Team lifecycle (creation/cleanup) is managed by Claude Code, not this hook.
+ * @returns {{ teamName: string, memberCount: number } | null}
+ */
+function detectAgentTeam() {
+  try {
+    const teamsDir = path.join(os.homedir(), '.claude', 'teams');
+    if (!fs.existsSync(teamsDir)) return null;
+
+    const teams = fs.readdirSync(teamsDir, { withFileTypes: true });
+    for (const entry of teams) {
+      if (!entry.isDirectory()) continue;
+      const configPath = path.join(teamsDir, entry.name, 'config.json');
+      if (!fs.existsSync(configPath)) continue;
+      try {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        if (config.members && config.members.length > 0) {
+          return { teamName: entry.name, memberCount: config.members.length };
+        }
+      } catch { /* skip malformed configs */ }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Main hook execution
  */
 async function main() {
   try {
+    // Issue #422: One-time cleanup of orphaned .shadowed/ from disabled skill-dedup hook
+    const shadowedCleanup = cleanupOrphanedShadowedSkills();
+
     const stdin = fs.readFileSync(0, 'utf-8').trim();
     const data = stdin ? JSON.parse(stdin) : {};
     const envFile = process.env.CLAUDE_ENV_FILE;
@@ -76,6 +182,9 @@ async function main() {
     // Reports path only uses active plans, not suggested ones
     const reportsPath = getReportsPath(resolved.path, resolved.resolvedBy, config.plan, config.paths);
 
+    // Extract task list ID for Claude Code Tasks coordination (shared helper)
+    const taskListId = extractTaskListId(resolved);
+
     // Collect static environment info (computed once per session)
     const staticEnv = {
       nodeVersion: process.version,
@@ -83,7 +192,7 @@ async function main() {
       osPlatform: process.platform,
       gitUrl: getGitRemoteUrl(),
       gitBranch: getGitBranch(),
-      gitRoot: execSafe('git rev-parse --show-toplevel'),
+      gitRoot: getGitRoot(),
       user: process.env.USERNAME || process.env.USER || process.env.LOGNAME || os.userInfo().username,
       locale: process.env.LANG || '',
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -113,6 +222,12 @@ async function main() {
       // Plan resolution
       writeEnv(envFile, 'CK_ACTIVE_PLAN', resolved.resolvedBy === 'session' ? resolved.path : '');
       writeEnv(envFile, 'CK_SUGGESTED_PLAN', resolved.resolvedBy === 'branch' ? resolved.path : '');
+
+      // Claude Code Tasks integration - enables multi-session/subagent coordination
+      // Task list ID = plan directory name (shared across all sessions working on same plan)
+      if (taskListId) {
+        writeEnv(envFile, 'CLAUDE_CODE_TASK_LIST_ID', taskListId);
+      }
 
       // Paths - use absolute paths based on CWD for subdirectory workflow support (Issue #327)
       writeEnv(envFile, 'CK_GIT_ROOT', staticEnv.gitRoot || '');
@@ -145,7 +260,7 @@ async function main() {
         writeEnv(envFile, 'CK_RESPONSE_LANGUAGE', config.locale.responseLanguage);
       }
 
-      // Plan validation config (for /plan:validate, /plan:hard, /plan:parallel)
+      // Plan validation config (for /plan validate, /plan --hard, /plan --parallel)
       const validation = config.plan?.validation || {};
       writeEnv(envFile, 'CK_VALIDATION_MODE', validation.mode || 'prompt');
       writeEnv(envFile, 'CK_VALIDATION_MIN_QUESTIONS', validation.minQuestions || 3);
@@ -156,9 +271,41 @@ async function main() {
       const codingLevel = config.codingLevel ?? 5;
       writeEnv(envFile, 'CK_CODING_LEVEL', codingLevel);
       writeEnv(envFile, 'CK_CODING_LEVEL_STYLE', getCodingLevelStyleName(codingLevel));
+
+    }
+
+    // Agent Teams detection — detect once, used for env vars and console output
+    const teamInfo = detectAgentTeam();
+    if (envFile && teamInfo) {
+      writeEnv(envFile, 'CK_AGENT_TEAM', teamInfo.teamName);
+      writeEnv(envFile, 'CK_AGENT_TEAM_MEMBERS', teamInfo.memberCount);
     }
 
     console.log(`Session ${source}. ${buildContextOutput(config, detections, resolved, staticEnv.gitRoot)}`);
+
+    // Issue #422: Notify user if orphaned skills were recovered from .shadowed/
+    const hasCleanup = shadowedCleanup.restored.length > 0 || shadowedCleanup.skipped.length > 0 || shadowedCleanup.kept.length > 0;
+    if (hasCleanup) {
+      console.log(`\n[!] SKILL-DEDUP CLEANUP (Issue #422):`);
+      console.log(`Recovered orphaned .shadowed/ directory from disabled skill-dedup hook.`);
+      if (shadowedCleanup.restored.length > 0) {
+        console.log(`Restored ${shadowedCleanup.restored.length} skill(s): ${shadowedCleanup.restored.join(', ')}`);
+      }
+      if (shadowedCleanup.skipped.length > 0) {
+        console.log(`Removed ${shadowedCleanup.skipped.length} duplicate(s): ${shadowedCleanup.skipped.join(', ')}`);
+      }
+      if (shadowedCleanup.kept.length > 0) {
+        console.log(`[!] Kept ${shadowedCleanup.kept.length} skill(s) for manual review (content differs): ${shadowedCleanup.kept.join(', ')}`);
+        console.log(`    Review .claude/skills/.shadowed/ and merge changes manually.`);
+      }
+    }
+
+    // Agent Teams: Show team context if running inside a team (uses cached result)
+    if (teamInfo) {
+      console.log(`[i] Agent Team detected: "${teamInfo.teamName}" (${teamInfo.memberCount} members)`);
+      console.log(`    Team config: ~/.claude/teams/${teamInfo.teamName}/config.json`);
+      console.log(`    Use /team skill for orchestration templates.`);
+    }
 
     // Info: Show git root when running from subdirectory (Issue #327: now supported)
     if (staticEnv.gitRoot && staticEnv.gitRoot !== process.cwd()) {
@@ -196,6 +343,18 @@ async function main() {
     console.error(`SessionStart hook error: ${error.message}`);
     process.exit(0);
   }
-}
+  }
 
-main();
+  main();
+} catch (e) {
+  // Minimal crash logging (zero deps — only Node builtins)
+  try {
+    const fs = require('fs');
+    const p = require('path');
+    const logDir = p.join(__dirname, '.logs');
+    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+    fs.appendFileSync(p.join(logDir, 'hook-log.jsonl'),
+      JSON.stringify({ ts: new Date().toISOString(), hook: p.basename(__filename, '.cjs'), status: 'crash', error: e.message }) + '\n');
+  } catch (_) {}
+  process.exit(0); // fail-open
+}

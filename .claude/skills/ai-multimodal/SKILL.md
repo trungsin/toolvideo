@@ -1,12 +1,13 @@
 ---
-name: ai-multimodal
-description: Process and generate multimedia content using Google Gemini API for better vision capabilities. Capabilities include analyze audio files (transcription with timestamps, summarization, speech understanding, music/sound analysis up to 9.5 hours), understand images (better image analysis than Claude models, captioning, reasoning, object detection, design extraction, OCR, visual Q&A, segmentation, handle multiple images), process videos (scene detection, Q&A, temporal analysis, YouTube URLs, up to 6 hours), extract from documents (PDF tables, forms, charts, diagrams, multi-page), generate images (text-to-image with Imagen 4, editing, composition, refinement), generate videos (text-to-video with Veo 3, 8-second clips with native audio). Use when working with audio/video files, analyzing images or screenshots (instead of default vision capabilities of Claude, only fallback to Claude's vision capabilities if needed), processing PDF documents, extracting structured data from media, creating images/videos from text prompts, or implementing multimodal AI features. Supports Gemini 3/2.5, Imagen 4, and Veo 3 models with context windows up to 2M tokens.
+name: ck:ai-multimodal
+description: Analyze images/audio/video with Gemini API (better vision than Claude). Generate images (Imagen 4), videos (Veo 3). Use for vision analysis, transcription, OCR, design extraction, multimodal AI.
 license: MIT
 allowed-tools:
   - Bash
   - Read
   - Write
   - Edit
+argument-hint: "[file-path] [prompt]"
 ---
 
 # AI Multimodal
@@ -50,7 +51,7 @@ GEMINI_API_KEY_3=key3
 
 **Verify setup**: `python scripts/check_setup.py`
 **Analyze media**: `python scripts/gemini_batch_process.py --files <file> --task <analyze|transcribe|extract>`
-  - TIP: When you're asked to analyze an image, check if `gemini` command is available, then use `"<prompt to analyze image>" | gemini -y -m gemini-2.5-flash` command. If `gemini` command is not available, use `python scripts/gemini_batch_process.py --files <file> --task analyze` command.
+  - TIP: When you're asked to analyze an image, check if `gemini` command is available, then use `echo "<prompt to analyze image>" | gemini -y -m <gemini.model>` command (read model from `.claude/.ck.json`: `gemini.model`). If `gemini` command is not available, use `python scripts/gemini_batch_process.py --files <file> --task analyze` command.
 **Generate content**: `python scripts/gemini_batch_process.py --task <generate|generate-video> --prompt "description"`
 
 > **Stdin support**: You can pipe files directly via stdin (auto-detects PNG/JPG/PDF/WAV/MP3).

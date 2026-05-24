@@ -127,11 +127,8 @@ Generate YAML catalogs from command and skill data files. Outputs to stdout by d
 # Generate skills catalog (outputs to stdout)
 python .opencode/scripts/generate_catalogs.py --skills
 
-# Generate commands catalog (outputs to stdout)
-python .opencode/scripts/generate_catalogs.py --commands
-
-# Generate both catalogs (outputs to stdout)
-python .opencode/scripts/generate_catalogs.py
+# Generate skills catalog to file
+python .opencode/scripts/generate_catalogs.py --skills --output guide/SKILLS.yaml
 
 # Write to file instead of stdout
 python .opencode/scripts/generate_catalogs.py --skills --output guide/SKILLS.yaml

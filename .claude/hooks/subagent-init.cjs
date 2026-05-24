@@ -10,17 +10,27 @@
  *   0 - Success (non-blocking, allows continuation)
  */
 
-const fs = require('fs');
-const path = require('path');
-const {
-  loadConfig,
-  resolveNamingPattern,
-  getGitBranch,
-  getGitRoot,
-  resolvePlanPath,
-  getReportsPath,
-  normalizePath
-} = require('./lib/ck-config-utils.cjs');
+// Crash wrapper
+try {
+  const fs = require('fs');
+  const path = require('path');
+  const {
+    loadConfig,
+    resolveNamingPattern,
+    getGitBranch,
+    getGitRoot,
+    resolvePlanPath,
+    getReportsPath,
+    normalizePath,
+    extractTaskListId,
+    isHookEnabled
+  } = require('./lib/ck-config-utils.cjs');
+  const { resolveSkillsVenv } = require('./lib/context-builder.cjs');
+
+  // Early exit if hook disabled in config
+  if (!isHookEnabled('subagent-init')) {
+    process.exit(0);
+  }
 
 /**
  * Get agent-specific context from config
@@ -84,6 +94,9 @@ async function main() {
     const reportsPath = getReportsPath(resolved.path, resolved.resolvedBy, config.plan, config.paths, baseDir);
     const activePlan = resolved.resolvedBy === 'session' ? resolved.path : '';
     const suggestedPlan = resolved.resolvedBy === 'branch' ? resolved.path : '';
+
+    // Extract task list ID for Claude Code Tasks coordination (shared helper, DRY)
+    const taskListId = extractTaskListId(resolved);
     const plansPath = path.join(baseDir, normalizePath(config.paths?.plans) || 'plans');
     const docsPath = path.join(baseDir, normalizePath(config.paths?.docs) || 'docs');
     const thinkingLanguage = config.locale?.thinkingLanguage || '';
@@ -103,6 +116,9 @@ async function main() {
     lines.push(`## Context`);
     if (activePlan) {
       lines.push(`- Plan: ${activePlan}`);
+      if (taskListId) {
+        lines.push(`- Task List: ${taskListId} (shared with session)`);
+      }
     } else if (suggestedPlan) {
       lines.push(`- Plan: none | Suggested: ${suggestedPlan}`);
     } else {
@@ -125,11 +141,19 @@ async function main() {
       lines.push(``);
     }
 
+    // Resolve Python venv path for subagent instructions
+    const skillsVenv = resolveSkillsVenv();
+
     // Core rules (minimal)
     lines.push(`## Rules`);
     lines.push(`- Reports → ${reportsPath}`);
     lines.push(`- YAGNI / KISS / DRY`);
     lines.push(`- Concise, list unresolved Qs at end`);
+    // Python venv rules (if venv exists)
+    if (skillsVenv) {
+      lines.push(`- Python scripts in .claude/skills/: Use \`${skillsVenv}\``);
+      lines.push(`- Never use global pip install`);
+    }
 
     // Naming templates (computed directly for reliable injection)
     lines.push(``);
@@ -162,6 +186,18 @@ async function main() {
     console.error(`SubagentStart hook error: ${error.message}`);
     process.exit(0); // Fail-open
   }
-}
+  }
 
-main();
+  main();
+} catch (e) {
+  // Minimal crash logging (zero deps — only Node builtins)
+  try {
+    const fs = require('fs');
+    const p = require('path');
+    const logDir = p.join(__dirname, '.logs');
+    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+    fs.appendFileSync(p.join(logDir, 'hook-log.jsonl'),
+      JSON.stringify({ ts: new Date().toISOString(), hook: p.basename(__filename, '.cjs'), status: 'crash', error: e.message }) + '\n');
+  } catch (_) {}
+  process.exit(0); // fail-open
+}
