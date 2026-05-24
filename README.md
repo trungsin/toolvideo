@@ -6,7 +6,8 @@ Personal video download tool for YouTube, Facebook, and TikTok with CLI and Web 
 
 - **YouTube** - Downloads via yt-dlp with best quality auto-selection
 - **Facebook** - Multi-fallback chain (yt-dlp → npm lib → custom scraper)
-- **TikTok** - Multi-fallback (yt-dlp → tikwm.com API). Supports no-watermark video, watermark video, audio-only MP3, photo carousels rendered as MP4 slideshow.
+- **TikTok** - Multi-fallback (yt-dlp → tikwm.com API). Supports no-watermark video, watermark video, and photo carousels rendered as MP4 slideshow.
+- **MP3 Audio** - Extract audio as MP3 from any platform (VBR ~192kbps, embedded metadata + cover art)
 - **Karaoke** - Vocal removal + synced lyrics overlay
 - **CLI** - Simple command-line interface
 - **Web UI** - Minimal dark-themed web app
@@ -41,8 +42,8 @@ npm install
 # TikTok: download with watermark
 ./src/cli/index.js --watermark <tiktok-url>
 
-# TikTok: extract audio as MP3
-./src/cli/index.js --audio-only <tiktok-url>
+# Extract audio as MP3 (YouTube, Facebook, TikTok)
+./src/cli/index.js --audio-only <url>
 
 # TikTok short URL (vm.tiktok.com / vt.tiktok.com) is auto-resolved
 ./src/cli/index.js https://vm.tiktok.com/ZSXXXXXX/
@@ -99,7 +100,7 @@ npm start
 open http://localhost:3000
 ```
 
-Toggle **Karaoke Mode** in the web UI to convert videos with vocal removal and synced lyrics.
+Toggle **Audio MP3** in the web UI to extract MP3 audio, or toggle **Karaoke Mode** to convert videos with vocal removal and synced lyrics. These modes are mutually exclusive.
 
 ## Project Structure
 
@@ -112,6 +113,8 @@ src/
 ├── core/
 │   ├── downloader.js         # Main orchestrator
 │   ├── url-detector.js       # Platform detection + short-URL resolver
+│   ├── audio-args.js         # Shared yt-dlp MP3 extraction args
+│   ├── audio-postprocess.js  # FFmpeg MP4-to-MP3 fallback conversion
 │   ├── youtube-handler.js    # yt-dlp wrapper
 │   ├── facebook-handler.js   # Multi-fallback handler
 │   ├── facebook/             # Facebook methods (yt-dlp, npm-lib, scraper)
@@ -138,7 +141,7 @@ scripts/
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | /api/download | Start download |
+| POST | /api/download | Start download; accepts `{ "url": string, "audioOnly": boolean }` |
 | POST | /api/karaoke | Start karaoke conversion |
 | GET | /api/progress/:id | Check progress |
 | GET | /api/history | Get download history |

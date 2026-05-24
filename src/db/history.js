@@ -25,6 +25,7 @@ db.exec(`
     filesize INTEGER,
     duration INTEGER,
     thumbnail TEXT,
+    audio_only INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     status TEXT DEFAULT 'completed'
   );
@@ -50,6 +51,12 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_karaoke_created ON karaoke(created_at);
 `);
 
+// Migration: keep existing installs compatible with audio/video dedup.
+const downloadColumns = db.prepare(`PRAGMA table_info(downloads)`).all();
+if (!downloadColumns.some((column) => column.name === 'audio_only')) {
+  db.exec(`ALTER TABLE downloads ADD COLUMN audio_only INTEGER DEFAULT 0`);
+}
+
 /**
  * Add a new download record
  * @param {Object} data - Download data
@@ -58,8 +65,8 @@ db.exec(`
 export function addDownload(data) {
   const id = nanoid(10);
   const stmt = db.prepare(`
-    INSERT INTO downloads (id, url, platform, title, filepath, quality, filesize, duration, thumbnail, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO downloads (id, url, platform, title, filepath, quality, filesize, duration, thumbnail, status, audio_only)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   stmt.run(
     id,
@@ -71,7 +78,8 @@ export function addDownload(data) {
     data.filesize || null,
     data.duration || null,
     data.thumbnail || null,
-    data.status || 'completed'
+    data.status || 'completed',
+    data.audioOnly ? 1 : 0
   );
   return id;
 }
@@ -101,11 +109,12 @@ export function getDownloadById(id) {
 /**
  * Search by URL (check if already downloaded)
  * @param {string} url - Video URL
+ * @param {boolean} audioOnly - Whether to search audio-only downloads
  * @returns {Object|undefined} Download record
  */
-export function searchByUrl(url) {
-  const stmt = db.prepare(`SELECT * FROM downloads WHERE url = ?`);
-  return stmt.get(url);
+export function searchByUrl(url, audioOnly = false) {
+  const stmt = db.prepare(`SELECT * FROM downloads WHERE url = ? AND audio_only = ?`);
+  return stmt.get(url, audioOnly ? 1 : 0);
 }
 
 /**

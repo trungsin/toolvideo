@@ -8,6 +8,7 @@ import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { AUDIO_EXT, AUDIO_QUALITY, buildAudioArgs } from '../audio-args.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_OUTPUT = join(__dirname, '../../../downloads');
@@ -29,12 +30,12 @@ export async function downloadViaYtdlp(url, options = {}) {
   const info = await getInfo(url);
 
   // Download
-  const filepath = await runDownload(url, outputDir, options.progress);
+  const filepath = await runDownload(url, outputDir, options.progress, !!options.audioOnly);
 
   return {
     title: info.title,
     filepath,
-    quality: info.quality,
+    quality: options.audioOnly ? AUDIO_QUALITY : info.quality,
     duration: info.duration,
     thumbnail: info.thumbnail
   };
@@ -79,19 +80,27 @@ async function getInfo(url) {
 /**
  * Run yt-dlp download process
  */
-async function runDownload(url, outputDir, progress) {
+async function runDownload(url, outputDir, progress, audioOnly = false) {
   return new Promise((resolve, reject) => {
     const outputTemplate = join(outputDir, '%(title)s.%(ext)s');
 
-    const args = [
-      // Force H.264 (avc1) video + AAC (mp4a) audio for universal compatibility
-      '-f', 'bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[vcodec^=avc1]/best',
-      '--merge-output-format', 'mp4',
-      '-o', outputTemplate,
-      '--no-playlist',
-      '--newline',
-      url
-    ];
+    const args = audioOnly
+      ? [
+          ...buildAudioArgs(),
+          '-o', outputTemplate,
+          '--no-playlist',
+          '--newline',
+          url,
+        ]
+      : [
+          // Force H.264 (avc1) video + AAC (mp4a) audio for universal compatibility
+          '-f', 'bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[vcodec^=avc1]/best',
+          '--merge-output-format', 'mp4',
+          '-o', outputTemplate,
+          '--no-playlist',
+          '--newline',
+          url
+        ];
 
     const proc = spawn('yt-dlp', args);
     let filepath = '';
@@ -113,8 +122,11 @@ async function runDownload(url, outputDir, progress) {
         const mergeMatch = line.match(/\[Merger\] Merging formats into "(.+)"/);
         if (mergeMatch) filepath = mergeMatch[1];
 
+        const audioMatch = line.match(/\[ExtractAudio\] Destination: (.+\.mp3)/);
+        if (audioMatch) filepath = audioMatch[1];
+
         // Capture from destination
-        const destMatch = line.match(/Destination: (.+)/);
+        const destMatch = line.match(new RegExp(`Destination: (.+\\.${audioOnly ? AUDIO_EXT : 'mp4'})`));
         if (destMatch && !filepath) filepath = destMatch[1];
 
         // Already downloaded

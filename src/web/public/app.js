@@ -11,11 +11,10 @@ const platformDiv = document.getElementById('platform');
 const progressFill = document.getElementById('progress-fill');
 const progressText = document.getElementById('progress-text');
 const resultDiv = document.getElementById('result');
-const resultTitle = document.getElementById('result-title');
-const downloadLink = document.getElementById('download-link');
 const errorDiv = document.getElementById('error');
 const historyList = document.getElementById('history-list');
 const karaokeToggle = document.getElementById('karaoke-toggle');
+const audioToggle = document.getElementById('audio-toggle');
 const karaokeOptions = document.getElementById('karaoke-options');
 const lyricsSource = document.getElementById('lyrics-source');
 const langSelect = document.getElementById('lang-select');
@@ -24,6 +23,7 @@ const langSelect = document.getElementById('lang-select');
 let currentDownloadId = null;
 let pollInterval = null;
 let isKaraokeMode = false;
+let isAudioMode = false;
 
 // Initialize
 loadHistory();
@@ -31,8 +31,22 @@ loadHistory();
 // Karaoke toggle handler
 karaokeToggle.addEventListener('change', () => {
   isKaraokeMode = karaokeToggle.checked;
+  if (isKaraokeMode) {
+    audioToggle.checked = false;
+    isAudioMode = false;
+  }
   karaokeOptions.classList.toggle('hidden', !isKaraokeMode);
-  downloadBtn.textContent = isKaraokeMode ? 'Create Karaoke' : 'Download';
+  updateDownloadButton();
+});
+
+audioToggle.addEventListener('change', () => {
+  isAudioMode = audioToggle.checked;
+  if (isAudioMode) {
+    karaokeToggle.checked = false;
+    isKaraokeMode = false;
+    karaokeOptions.classList.add('hidden');
+  }
+  updateDownloadButton();
 });
 
 // Event listeners
@@ -87,7 +101,7 @@ async function startDownload() {
       response = await fetch('/api/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url })
+        body: JSON.stringify({ url, audioOnly: isAudioMode })
       });
 
       data = await response.json();
@@ -97,7 +111,9 @@ async function startDownload() {
       }
 
       currentDownloadId = data.downloadId;
-      platformDiv.textContent = data.platform.toUpperCase();
+      platformDiv.textContent = isAudioMode
+        ? `${data.platform.toUpperCase()} • MP3`
+        : data.platform.toUpperCase();
     }
 
     // Start polling for progress
@@ -152,7 +168,6 @@ async function checkProgress() {
 
       if (isKaraoke) {
         // Show karaoke result with multiple download options
-        resultTitle.textContent = 'Karaoke Ready!';
         resultDiv.innerHTML = `
           <div class="result-title">Karaoke Ready!</div>
           <div class="karaoke-downloads">
@@ -170,8 +185,7 @@ async function checkProgress() {
         resultDiv.classList.remove('hidden');
       } else {
         // Normal download result
-        resultTitle.textContent = data.result.title || 'Video';
-        downloadLink.href = `/api/file/${currentDownloadId}`;
+        renderDownloadResult(data.result.title || 'Video', `/api/file/${currentDownloadId}`);
         resultDiv.classList.remove('hidden');
       }
 
@@ -211,11 +225,21 @@ async function loadHistory() {
       const date = new Date(d.created_at).toLocaleDateString();
       const title = (d.title || 'Unknown').substring(0, 40);
 
-      li.innerHTML = `
-        <span class="platform-tag ${d.platform}">${d.platform}</span>
-        <span class="title" title="${d.title || ''}">${title}${d.title && d.title.length > 40 ? '...' : ''}</span>
-        <span class="date">${date}</span>
-      `;
+      const tag = d.audio_only ? 'mp3' : d.platform;
+      const platformTag = document.createElement('span');
+      platformTag.className = `platform-tag ${tag}`;
+      platformTag.textContent = tag;
+
+      const titleSpan = document.createElement('span');
+      titleSpan.className = 'title';
+      titleSpan.title = d.title || '';
+      titleSpan.textContent = `${title}${d.title && d.title.length > 40 ? '...' : ''}`;
+
+      const dateSpan = document.createElement('span');
+      dateSpan.className = 'date';
+      dateSpan.textContent = date;
+
+      li.append(platformTag, titleSpan, dateSpan);
       historyList.appendChild(li);
     }
 
@@ -242,4 +266,28 @@ function hideAll() {
   statusDiv.classList.add('hidden');
   resultDiv.classList.add('hidden');
   errorDiv.classList.add('hidden');
+}
+
+function updateDownloadButton() {
+  downloadBtn.textContent = isKaraokeMode
+    ? 'Create Karaoke'
+    : isAudioMode
+      ? 'Download MP3'
+      : 'Download';
+}
+
+function renderDownloadResult(title, href) {
+  resultDiv.textContent = '';
+
+  const titleEl = document.createElement('div');
+  titleEl.className = 'result-title';
+  titleEl.textContent = title;
+
+  const linkEl = document.createElement('a');
+  linkEl.className = 'download-link';
+  linkEl.href = href;
+  linkEl.download = true;
+  linkEl.textContent = isAudioMode ? 'Download MP3' : 'Download File';
+
+  resultDiv.append(titleEl, linkEl);
 }

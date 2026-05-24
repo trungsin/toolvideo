@@ -7,6 +7,7 @@ import { spawn } from 'child_process';
 import { join, dirname } from 'path';
 import { existsSync, mkdirSync, readdirSync } from 'fs';
 import { fileURLToPath } from 'url';
+import { AUDIO_QUALITY, buildAudioArgs } from '../audio-args.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_OUTPUT = join(__dirname, '../../../downloads');
@@ -32,6 +33,8 @@ export async function downloadViaYtdlp(url, options = {}) {
 
   const beforeFiles = isPhoto ? new Set(readdirSync(targetDir)) : null;
   const filepath = await runDownload(url, targetDir, options);
+
+  if (options.audioOnly) return audioResult(info, filepath);
 
   if (isPhoto) {
     // Collect new files: images + audio
@@ -60,7 +63,7 @@ export async function downloadViaYtdlp(url, options = {}) {
   return {
     title: info.title,
     filepath,
-    quality: options.audioOnly ? 'mp3' : (info.quality || 'best'),
+    quality: options.audioOnly ? AUDIO_QUALITY : (info.quality || 'best'),
     duration: info.duration,
     thumbnail: info.thumbnail,
     contentType: 'video'
@@ -137,7 +140,7 @@ async function runDownload(url, outputDir, options) {
         reject(new Error(stderr.trim() || 'yt-dlp download failed'));
         return;
       }
-      if (!filepath && options.contentType !== 'photo') {
+      if (!filepath && (options.contentType !== 'photo' || options.audioOnly)) {
         reject(new Error('Could not determine output file'));
         return;
       }
@@ -157,7 +160,7 @@ function buildArgs(url, outputDir, options) {
 
   if (options.audioOnly) {
     // Extract audio as MP3
-    args.push('-x', '--audio-format', 'mp3', '--audio-quality', '0');
+    args.push(...buildAudioArgs());
     args.push('-o', join(outputDir, '%(title)s.%(ext)s'));
   } else if (options.contentType === 'photo') {
     // Photo carousel: download all images + audio.
@@ -182,9 +185,11 @@ function buildArgs(url, outputDir, options) {
   return args;
 }
 
-/**
- * Sanitize string for safe folder name
- */
+function audioResult(info, filepath) {
+  return { title: info.title, filepath, quality: AUDIO_QUALITY, duration: info.duration, thumbnail: info.thumbnail, contentType: 'audio' };
+}
+
+/** Sanitize string for safe folder name */
 function sanitizeFolderName(name) {
   return name
     .replace(/[^\w\sÀ-ỹ-]/g, '')

@@ -10,10 +10,11 @@ import { ProgressTracker } from '../utils/progress.js';
 
 /**
  * Download video from URL
- * @param {string} url - Video URL (YouTube or Facebook)
+ * @param {string} url - Video URL (YouTube, Facebook, or TikTok)
  * @param {Object} options - Download options
  * @param {string} options.outputDir - Output directory
  * @param {boolean} options.force - Force re-download if exists
+ * @param {boolean} options.audioOnly - Extract MP3 audio only
  * @param {Function} options.onProgress - Progress callback
  * @returns {Object} Download result with id, title, filepath, etc.
  */
@@ -40,7 +41,7 @@ export async function download(url, options = {}) {
 
   // Check if already downloaded (skip only if file still exists on disk)
   if (!options.force) {
-    const existing = searchByUrl(url);
+    const existing = searchByUrl(url, !!options.audioOnly);
     if (existing && existing.filepath && existsSync(existing.filepath)) {
       console.log(`Already downloaded: ${existing.filepath}`);
       return existing;
@@ -58,10 +59,18 @@ export async function download(url, options = {}) {
 
   if (platform === 'youtube') {
     const { downloadYouTube } = await import('./youtube-handler.js');
-    result = await downloadYouTube(url, { progress, outputDir: options.outputDir });
+    result = await downloadYouTube(url, {
+      progress,
+      outputDir: options.outputDir,
+      audioOnly: options.audioOnly,
+    });
   } else if (platform === 'facebook') {
     const { downloadFacebook } = await import('./facebook-handler.js');
-    result = await downloadFacebook(url, { progress, outputDir: options.outputDir });
+    result = await downloadFacebook(url, {
+      progress,
+      outputDir: options.outputDir,
+      audioOnly: options.audioOnly,
+    });
   } else if (platform === 'tiktok') {
     const { downloadTikTok } = await import('./tiktok-handler.js');
     result = await downloadTikTok(url, {
@@ -83,6 +92,7 @@ export async function download(url, options = {}) {
     filesize: result.filesize,
     duration: result.duration,
     thumbnail: result.thumbnail,
+    audioOnly: !!options.audioOnly,
     status: 'completed'
   });
 

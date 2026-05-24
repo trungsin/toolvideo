@@ -9,6 +9,8 @@ import { createWriteStream, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { AUDIO_QUALITY } from '../audio-args.js';
+import { videoToMp3 } from '../audio-postprocess.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_OUTPUT = join(__dirname, '../../../downloads');
@@ -41,15 +43,27 @@ export async function downloadViaNpmLib(url, options = {}) {
   }
 
   const title = sanitizeFilename(info.title || 'facebook_video');
-  const filepath = join(outputDir, `${title}.mp4`);
+  let filepath = join(outputDir, `${title}.mp4`);
 
   // Download video file
   await downloadFile(videoUrl, filepath, options.progress);
 
+  if (options.audioOnly) {
+    filepath = await videoToMp3(
+      filepath,
+      {
+        title: info.title || 'Facebook Video',
+        artist: info.uploader || 'Facebook',
+        thumbnailUrl: info.thumbnail,
+      },
+      { deleteSource: true }
+    );
+  }
+
   return {
     title: info.title || 'Facebook Video',
     filepath,
-    quality: info.hd ? 'HD' : 'SD',
+    quality: options.audioOnly ? AUDIO_QUALITY : (info.hd ? 'HD' : 'SD'),
     duration: info.duration || null,
     thumbnail: info.thumbnail || null
   };

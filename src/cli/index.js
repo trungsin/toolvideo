@@ -65,7 +65,7 @@ program
   .option('-o, --output <dir>', 'Output directory', './downloads')
   .option('-f, --force', 'Force re-download even if exists in history')
   .option('--watermark', 'TikTok only: include watermark in downloaded video')
-  .option('--audio-only', 'TikTok only: download audio as MP3')
+  .option('--audio-only', 'Download audio as MP3 (YouTube, Facebook, TikTok)')
   .action(async (url, options) => {
     if (!url) {
       program.help();
@@ -110,6 +110,9 @@ program
       console.log(colors.green('\u2713 Download complete!'));
       console.log(colors.dim(`Title: ${result.title}`));
       console.log(colors.dim(`File: ${result.filepath}`));
+      if (options.audioOnly) {
+        console.log(colors.dim('Format: MP3 (audio only)'));
+      }
       if (result.quality) {
         console.log(colors.dim(`Quality: ${result.quality}`));
       }

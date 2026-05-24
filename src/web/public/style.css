@@ -209,6 +209,16 @@ button:disabled {
   color: #fff;
 }
 
+.platform-tag.tiktok {
+  background: #111;
+  color: #fff;
+}
+
+.platform-tag.mp3 {
+  background: #2a9d8f;
+  color: #fff;
+}
+
 .history .title {
   flex: 1;
   overflow: hidden;
@@ -225,6 +235,9 @@ button:disabled {
 
 /* Karaoke Options */
 .options-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   margin-bottom: 1.5rem;
 }
 

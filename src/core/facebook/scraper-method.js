@@ -9,6 +9,8 @@ import { createWriteStream, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { AUDIO_QUALITY } from '../audio-args.js';
+import { videoToMp3 } from '../audio-postprocess.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_OUTPUT = join(__dirname, '../../../downloads');
@@ -37,17 +39,29 @@ export async function downloadViaScraper(url, options = {}) {
   }
 
   const title = sanitizeFilename(videoData.title || 'facebook_video');
-  const filepath = join(outputDir, `${title}.mp4`);
+  let filepath = join(outputDir, `${title}.mp4`);
 
   // Download video
   await downloadFile(videoData.url, filepath, options.progress);
 
+  if (options.audioOnly) {
+    filepath = await videoToMp3(
+      filepath,
+      {
+        title: videoData.title || 'Facebook Video',
+        artist: 'Facebook',
+        thumbnailUrl: videoData.thumbnail,
+      },
+      { deleteSource: true }
+    );
+  }
+
   return {
     title: videoData.title || 'Facebook Video',
     filepath,
-    quality: videoData.quality || 'unknown',
+    quality: options.audioOnly ? AUDIO_QUALITY : (videoData.quality || 'unknown'),
     duration: null,
-    thumbnail: null
+    thumbnail: videoData.thumbnail || null
   };
 }
 
@@ -76,6 +90,7 @@ function extractVideoUrl(html) {
   const $ = cheerio.load(html);
   let videoUrl = null;
   let title = null;
+  let thumbnail = null;
   let quality = 'SD';
 
   // Method 1: og:video meta tag
@@ -157,8 +172,11 @@ function extractVideoUrl(html) {
 
   // Clean up title
   title = title.replace(/\| Facebook$/, '').trim();
+  thumbnail = $('meta[property="og:image"]').attr('content') ||
+              $('meta[name="twitter:image"]').attr('content') ||
+              null;
 
-  return { url: videoUrl, title, quality };
+  return { url: videoUrl, title, quality, thumbnail };
 }
 
 /**

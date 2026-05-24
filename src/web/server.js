@@ -4,7 +4,7 @@
  */
 
 import express from 'express';
-import { dirname, join } from 'path';
+import { dirname, extname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { download, detectPlatform, isValidUrl } from '../core/downloader.js';
 import { getDownloads, getDownloadById, addKaraoke, getKaraokeById } from '../db/history.js';
@@ -77,7 +77,7 @@ app.post('/api/check', (req, res) => {
 
 // API: Start download
 app.post('/api/download', async (req, res) => {
-  const { url } = req.body;
+  const { url, audioOnly } = req.body;
 
   if (!url || !isValidUrl(url)) {
     return res.status(400).json({ error: 'Invalid URL' });
@@ -98,6 +98,7 @@ app.post('/api/download', async (req, res) => {
 
   // Start download in background
   download(url, {
+    audioOnly: !!audioOnly,
     onProgress: (data) => {
       const current = activeDownloads.get(downloadId);
       if (current && data.percent !== undefined) {
@@ -124,7 +125,7 @@ app.post('/api/download', async (req, res) => {
       }
     });
 
-  res.json({ downloadId, platform });
+  res.json({ downloadId, platform, audioOnly: !!audioOnly });
 });
 
 // API: Check download progress
@@ -196,13 +197,26 @@ app.get('/api/file/:id', (req, res) => {
 
   const filename = filepath.split('/').pop();
   const stat = statSync(filepath);
+  const contentType = getDownloadContentType(filepath);
 
   res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
-  res.setHeader('Content-Type', 'video/mp4');
+  res.setHeader('Content-Type', contentType);
   res.setHeader('Content-Length', stat.size);
 
   createReadStream(filepath).pipe(res);
 });
+
+function getDownloadContentType(filepath) {
+  const mimeMap = {
+    '.mp3': 'audio/mpeg',
+    '.m4a': 'audio/mp4',
+    '.mp4': 'video/mp4',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+  };
+  return mimeMap[extname(filepath).toLowerCase()] || 'application/octet-stream';
+}
 
 // API: Check karaoke dependencies
 app.get('/api/karaoke/check', async (req, res) => {
