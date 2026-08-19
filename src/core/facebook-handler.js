@@ -11,6 +11,7 @@
 import { downloadViaYtdlp } from './facebook/yt-dlp-method.js';
 import { downloadViaNpmLib } from './facebook/npm-lib-method.js';
 import { downloadViaScraper } from './facebook/scraper-method.js';
+import { buildCommonYtdlpArgs } from './yt-dlp-common-args.js';
 
 // Download methods in priority order
 const METHODS = [
@@ -59,7 +60,7 @@ export async function getFacebookInfo(url) {
     const { spawn } = await import('child_process');
 
     return new Promise((resolve, reject) => {
-      const proc = spawn('yt-dlp', ['--dump-json', '--no-download', url]);
+      const proc = spawn('yt-dlp', [...buildCommonYtdlpArgs(), '--dump-json', '--no-download', url]);
       let stdout = '';
 
       proc.stdout.on('data', d => stdout += d);

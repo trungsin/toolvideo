@@ -8,6 +8,7 @@
 import { Command } from 'commander';
 import { download, detectPlatform, isValidUrl } from '../core/downloader.js';
 import { getDownloads } from '../db/history.js';
+import { buildCommonYtdlpArgs } from '../core/yt-dlp-common-args.js';
 
 const program = new Command();
 
@@ -176,7 +177,7 @@ program
 
     // Use yt-dlp to get info
     const { spawn } = await import('child_process');
-    const proc = spawn('yt-dlp', ['--dump-json', '--no-download', url]);
+    const proc = spawn('yt-dlp', [...buildCommonYtdlpArgs(), '--dump-json', '--no-download', url]);
 
     let stdout = '';
     let stderr = '';

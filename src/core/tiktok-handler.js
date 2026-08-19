@@ -10,6 +10,7 @@
 
 import { downloadViaYtdlp } from './tiktok/yt-dlp-method.js';
 import { downloadViaTikwm } from './tiktok/tikwm-method.js';
+import { buildCommonYtdlpArgs } from './yt-dlp-common-args.js';
 
 // Methods in priority order: yt-dlp primary, tikwm fallback
 const METHODS = [
@@ -71,7 +72,7 @@ export async function getTikTokInfo(url) {
     const { spawn } = await import('child_process');
 
     return new Promise((resolve) => {
-      const proc = spawn('yt-dlp', ['--dump-json', '--no-download', url]);
+      const proc = spawn('yt-dlp', [...buildCommonYtdlpArgs(), '--dump-json', '--no-download', url]);
       let stdout = '';
 
       proc.stdout.on('data', d => stdout += d);

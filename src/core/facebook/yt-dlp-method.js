@@ -9,6 +9,7 @@ import { existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { AUDIO_EXT, AUDIO_QUALITY, buildAudioArgs } from '../audio-args.js';
+import { buildCommonYtdlpArgs } from '../yt-dlp-common-args.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_OUTPUT = join(__dirname, '../../../downloads');
@@ -46,7 +47,7 @@ export async function downloadViaYtdlp(url, options = {}) {
  */
 async function getInfo(url) {
   return new Promise((resolve, reject) => {
-    const proc = spawn('yt-dlp', ['--dump-json', '--no-download', url]);
+    const proc = spawn('yt-dlp', [...buildCommonYtdlpArgs(), '--dump-json', '--no-download', url]);
     let stdout = '';
     let stderr = '';
 
@@ -86,6 +87,7 @@ async function runDownload(url, outputDir, progress, audioOnly = false) {
 
     const args = audioOnly
       ? [
+          ...buildCommonYtdlpArgs(),
           ...buildAudioArgs(),
           '-o', outputTemplate,
           '--no-playlist',
@@ -93,6 +95,7 @@ async function runDownload(url, outputDir, progress, audioOnly = false) {
           url,
         ]
       : [
+          ...buildCommonYtdlpArgs(),
           // Force H.264 (avc1) video + AAC (mp4a) audio for universal compatibility
           '-f', 'bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[vcodec^=avc1]/best',
           '--merge-output-format', 'mp4',

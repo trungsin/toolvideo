@@ -8,6 +8,7 @@ import { join, dirname } from 'path';
 import { existsSync, mkdirSync, readdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { AUDIO_QUALITY, buildAudioArgs } from '../audio-args.js';
+import { buildCommonYtdlpArgs } from '../yt-dlp-common-args.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_OUTPUT = join(__dirname, '../../../downloads');
@@ -75,7 +76,7 @@ export async function downloadViaYtdlp(url, options = {}) {
  */
 async function getInfo(url) {
   return new Promise((resolve, reject) => {
-    const proc = spawn('yt-dlp', ['--dump-json', '--no-download', url]);
+    const proc = spawn('yt-dlp', [...buildCommonYtdlpArgs(), '--dump-json', '--no-download', url]);
     let stdout = '';
     let stderr = '';
 
@@ -156,7 +157,7 @@ async function runDownload(url, outputDir, options) {
  * Build yt-dlp args based on options
  */
 function buildArgs(url, outputDir, options) {
-  const args = ['--no-playlist', '--newline'];
+  const args = [...buildCommonYtdlpArgs(), '--no-playlist', '--newline'];
 
   if (options.audioOnly) {
     // Extract audio as MP3

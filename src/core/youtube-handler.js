@@ -8,6 +8,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync, mkdirSync } from 'fs';
 import { AUDIO_EXT, AUDIO_QUALITY, buildAudioArgs } from './audio-args.js';
+import { buildCommonYtdlpArgs } from './yt-dlp-common-args.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_OUTPUT = join(__dirname, '../../downloads');
@@ -52,6 +53,7 @@ export async function downloadYouTube(url, options = {}) {
 export async function getVideoInfo(url) {
   return new Promise((resolve, reject) => {
     const args = [
+      ...buildCommonYtdlpArgs(),
       '--dump-json',
       '--no-download',
       url
@@ -112,6 +114,7 @@ async function runYtdlp(url, outputDir, progress, audioOnly = false) {
 
     const args = audioOnly
       ? [
+          ...buildCommonYtdlpArgs(),
           ...buildAudioArgs(),
           '-o', outputTemplate,
           '--no-playlist',
@@ -119,6 +122,7 @@ async function runYtdlp(url, outputDir, progress, audioOnly = false) {
           url,
         ]
       : [
+          ...buildCommonYtdlpArgs(),
           // Force H.264 (avc1) video + AAC (mp4a) audio for universal compatibility
           '-f', 'bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[vcodec^=avc1]/best',
           '--merge-output-format', 'mp4',
