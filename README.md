@@ -16,8 +16,17 @@ Personal video download tool for YouTube, Facebook, and TikTok with CLI and Web 
 ## Requirements
 
 - Node.js 18+
-- yt-dlp (`brew install yt-dlp` or `pip install yt-dlp`)
+- yt-dlp (`brew install yt-dlp` or `pip install -U --pre yt-dlp`)
+- A JavaScript runtime for YouTube: Deno (recommended) or Node.js
 - FFmpeg (`brew install ffmpeg`)
+
+YouTube extractors break often. If downloads return `HTTP 403 Forbidden`, update yt-dlp to nightly and confirm Deno is on `PATH`:
+
+```bash
+python3 -m pip install -U --pre yt-dlp
+# macOS: brew install deno
+# Linux: curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh
+```
 
 ### Karaoke Requirements (optional)
 
