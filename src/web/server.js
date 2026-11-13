@@ -13,7 +13,8 @@ import { convertToKaraoke, checkDependencies } from '../core/karaoke/karaoke-han
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 
 // Middleware
 app.use(express.json());
@@ -27,7 +28,12 @@ app.use(express.json());
  * Other /api/* routes require X-API-Key matching process.env.API_KEY for external callers.
  * If API_KEY env is not set, all /api/* routes are open (backward compat).
  */
-const WEB_UI_HOSTS = ['saveclip.datxanhmientrung.ai', 'localhost', '127.0.0.1'];
+const WEB_UI_HOSTS = [
+  'saveclip.datxanhmientrung.ai',
+  'saveclip.leesun.space',
+  'localhost',
+  '127.0.0.1',
+];
 // Paths are relative to the /api mount point (req.path strips the prefix)
 const PUBLIC_PATH_PREFIXES = ['/file/', '/karaoke/file/'];
 function apiKeyAuth(req, res, next) {
@@ -384,9 +390,9 @@ app.get('/api/karaoke/file/:id/:type', (req, res) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, HOST, () => {
   console.log(`\n  Video Downloader Server`);
   console.log(`  -----------------------`);
   console.log(`  Local:   http://localhost:${PORT}`);
-  console.log(`  Network: http://0.0.0.0:${PORT}\n`);
+  console.log(`  Bind:    http://${HOST}:${PORT}\n`);
 });
