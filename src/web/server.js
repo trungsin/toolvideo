@@ -75,7 +75,7 @@ app.post('/api/check', (req, res) => {
 
   const { platform } = detectPlatform(url);
   if (platform === 'unknown') {
-    return res.status(400).json({ error: 'Unsupported platform. Supported: YouTube, Facebook, TikTok.' });
+    return res.status(400).json({ error: 'Unsupported platform. Supported: YouTube, Facebook, TikTok, X.' });
   }
 
   res.json({ platform, valid: true });

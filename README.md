@@ -1,12 +1,13 @@
 # toolvideo
 
-Personal video download tool for YouTube, Facebook, and TikTok with CLI and Web interface. Includes karaoke conversion with vocal removal and synced lyrics.
+Personal video download tool for YouTube, Facebook, TikTok, and X (Twitter) with CLI and Web interface. Includes karaoke conversion with vocal removal and synced lyrics.
 
 ## Features
 
 - **YouTube** - Downloads via yt-dlp with best quality auto-selection
 - **Facebook** - Multi-fallback chain (yt-dlp → npm lib → custom scraper)
 - **TikTok** - Multi-fallback (yt-dlp → tikwm.com API). Supports no-watermark video, watermark video, and photo carousels rendered as MP4 slideshow.
+- **X (Twitter)** - Downloads via yt-dlp (`x.com` / `twitter.com` `/status/<id>` URLs). Multi-video posts: append `/video/N` to pick the Nth video.
 - **MP3 Audio** - Extract audio as MP3 from any platform (VBR ~192kbps, embedded metadata + cover art)
 - **Karaoke** - Vocal removal + synced lyrics overlay
 - **CLI** - Simple command-line interface
@@ -45,13 +46,13 @@ npm install
 ### CLI
 
 ```bash
-# Download video (YouTube, Facebook, TikTok)
+# Download video (YouTube, Facebook, TikTok, X)
 ./src/cli/index.js <url>
 
 # TikTok: download with watermark
 ./src/cli/index.js --watermark <tiktok-url>
 
-# Extract audio as MP3 (YouTube, Facebook, TikTok)
+# Extract audio as MP3 (YouTube, Facebook, TikTok, X)
 ./src/cli/index.js --audio-only <url>
 
 # TikTok short URL (vm.tiktok.com / vt.tiktok.com) is auto-resolved
@@ -59,6 +60,9 @@ npm install
 
 # TikTok photo carousel — auto-rendered as MP4 slideshow
 ./src/cli/index.js https://www.tiktok.com/@user/photo/<id>
+
+# X (Twitter) post video
+./src/cli/index.js https://x.com/<user>/status/<id>/video/1
 
 # Show download history
 ./src/cli/index.js history
@@ -124,7 +128,7 @@ src/
 │   ├── url-detector.js       # Platform detection + short-URL resolver
 │   ├── audio-args.js         # Shared yt-dlp MP3 extraction args
 │   ├── audio-postprocess.js  # FFmpeg MP4-to-MP3 fallback conversion
-│   ├── youtube-handler.js    # yt-dlp wrapper
+│   ├── youtube-handler.js    # yt-dlp wrapper (YouTube + X)
 │   ├── facebook-handler.js   # Multi-fallback handler
 │   ├── facebook/             # Facebook methods (yt-dlp, npm-lib, scraper)
 │   ├── tiktok-handler.js     # TikTok multi-fallback handler

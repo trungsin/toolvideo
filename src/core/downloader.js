@@ -10,7 +10,7 @@ import { ProgressTracker } from '../utils/progress.js';
 
 /**
  * Download video from URL
- * @param {string} url - Video URL (YouTube, Facebook, or TikTok)
+ * @param {string} url - Video URL (YouTube, Facebook, TikTok, or X)
  * @param {Object} options - Download options
  * @param {string} options.outputDir - Output directory
  * @param {boolean} options.force - Force re-download if exists
@@ -36,7 +36,7 @@ export async function download(url, options = {}) {
 
   const { platform } = detection;
   if (platform === 'unknown') {
-    throw new Error('Unsupported platform. Supported: YouTube, Facebook, TikTok.');
+    throw new Error('Unsupported platform. Supported: YouTube, Facebook, TikTok, X.');
   }
 
   // Check if already downloaded (skip only if file still exists on disk)
@@ -57,7 +57,8 @@ export async function download(url, options = {}) {
   // Download based on platform (dynamic import to avoid circular deps)
   let result;
 
-  if (platform === 'youtube') {
+  if (platform === 'youtube' || platform === 'x') {
+    // X has no extra fallbacks: yt-dlp's twitter extractor handles it, same path as YouTube
     const { downloadYouTube } = await import('./youtube-handler.js');
     result = await downloadYouTube(url, {
       progress,
@@ -114,7 +115,7 @@ export async function getInfo(url) {
     throw new Error('Unsupported platform');
   }
 
-  if (platform === 'youtube') {
+  if (platform === 'youtube' || platform === 'x') {
     const { getVideoInfo } = await import('./youtube-handler.js');
     return { platform, ...(await getVideoInfo(url)) };
   } else if (platform === 'facebook') {

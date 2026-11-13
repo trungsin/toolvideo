@@ -81,7 +81,8 @@ export async function getVideoInfo(url) {
         const info = JSON.parse(stdout);
         resolve({
           title: info.title,
-          quality: info.format_note || (info.height ? `${info.height}p` : 'best'),
+          // Height first: X merged formats only carry the audio's format_note ("Audio, high")
+          quality: info.height ? `${info.height}p` : (info.format_note || 'best'),
           filesize: info.filesize || info.filesize_approx || null,
           duration: info.duration || null,
           thumbnail: info.thumbnail || null,

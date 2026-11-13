@@ -2,7 +2,7 @@
 
 /**
  * CLI entry point for toolvideo
- * Download videos from YouTube, Facebook, and TikTok
+ * Download videos from YouTube, Facebook, TikTok, and X
  */
 
 import { Command } from 'commander';
@@ -57,7 +57,7 @@ function formatDate(yyyymmdd) {
 // Program setup
 program
   .name('toolvideo')
-  .description('Download videos from YouTube, Facebook, and TikTok')
+  .description('Download videos from YouTube, Facebook, TikTok, and X')
   .version('1.0.0');
 
 // Default download command
@@ -66,7 +66,7 @@ program
   .option('-o, --output <dir>', 'Output directory', './downloads')
   .option('-f, --force', 'Force re-download even if exists in history')
   .option('--watermark', 'TikTok only: include watermark in downloaded video')
-  .option('--audio-only', 'Download audio as MP3 (YouTube, Facebook, TikTok)')
+  .option('--audio-only', 'Download audio as MP3 (YouTube, Facebook, TikTok, X)')
   .action(async (url, options) => {
     if (!url) {
       program.help();
@@ -82,7 +82,7 @@ program
     // Detect platform
     const { platform } = detectPlatform(url);
     if (platform === 'unknown') {
-      console.error(colors.red('Error: Unsupported platform. Supported: YouTube, Facebook, TikTok.'));
+      console.error(colors.red('Error: Unsupported platform. Supported: YouTube, Facebook, TikTok, X.'));
       process.exit(1);
     }
 

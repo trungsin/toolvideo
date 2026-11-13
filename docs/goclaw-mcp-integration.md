@@ -170,7 +170,7 @@ Agent flow tự động chọn tool phù hợp.
 |-----|-------------|-----|
 | `SAVECLIP_API_KEY env var is required` | Thiếu env trong mcp.json | Thêm vào "env" block |
 | `HTTP 401: Invalid or missing API key` | Key sai | Verify với admin |
-| `HTTP 400: Unsupported platform` | URL không phải YouTube/Facebook/TikTok | Check URL |
+| `HTTP 400: Unsupported platform` | URL không phải YouTube/Facebook/TikTok/X | Check URL |
 | `Timeout waiting for job` | Video quá dài (>2 phút) | Hiện tại tool block 120s. Video dài cần upgrade tool sang async pattern. |
 | MCP server không khởi động | Path sai trong mcp.json | Dùng absolute path, check `node /path/to/index.js` chạy được không |
 

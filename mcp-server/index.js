@@ -18,11 +18,11 @@ const TOOLS = [
   {
     name: 'get_video_info',
     description:
-      'Fetch video metadata (title, duration, thumbnail) without downloading. Supports YouTube, Facebook, TikTok. Returns quickly.',
+      'Fetch video metadata (title, duration, thumbnail) without downloading. Supports YouTube, Facebook, TikTok, X (Twitter). Returns quickly.',
     inputSchema: {
       type: 'object',
       properties: {
-        url: { type: 'string', description: 'Video URL (YouTube, Facebook, or TikTok)' }
+        url: { type: 'string', description: 'Video URL (YouTube, Facebook, TikTok, or X/Twitter)' }
       },
       required: ['url']
     }

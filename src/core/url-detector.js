@@ -1,6 +1,6 @@
 /**
  * URL detector for identifying video platforms
- * Supports YouTube, Facebook, and TikTok video URLs
+ * Supports YouTube, Facebook, TikTok, and X (Twitter) video URLs
  */
 
 // YouTube URL patterns - captures video ID in group 1
@@ -37,6 +37,13 @@ const TIKTOK_PHOTO_PATTERNS = [
 // TikTok short URL patterns - need redirect resolve before parsing
 const TIKTOK_SHORT_PATTERNS = [
   /(?:vm|vt)\.tiktok\.com\/[\w]+/i,
+];
+
+// X (Twitter) post URL patterns - captures post ID in group 1.
+// Host anchored on `//` or `.` so e.g. netflix.com never matches.
+// Optional /video/N suffix is kept in the URL; yt-dlp uses it to pick the Nth video.
+const X_PATTERNS = [
+  /(?:\/\/|\.)(?:x|twitter)\.com\/(?:i\/web|[^/?#]+)\/status(?:es)?\/(\d+)/i,
 ];
 
 /**
@@ -109,6 +116,18 @@ export function detectPlatform(url) {
         videoId: null,
         contentType: 'unknown',
         isShortUrl: true,
+        originalUrl: url
+      };
+    }
+  }
+
+  // Check X (Twitter) post patterns
+  for (const pattern of X_PATTERNS) {
+    const match = url.match(pattern);
+    if (match) {
+      return {
+        platform: 'x',
+        videoId: match[1],
         originalUrl: url
       };
     }
@@ -221,7 +240,7 @@ export function isValidUrl(url) {
 }
 
 /**
- * Check if URL is supported (YouTube or Facebook)
+ * Check if URL is supported (YouTube, Facebook, TikTok, or X)
  * @param {string} url - URL to check
  * @returns {boolean} True if supported platform
  */
